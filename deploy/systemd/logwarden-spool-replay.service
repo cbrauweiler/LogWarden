@@ -1,0 +1,16 @@
+[Unit]
+Description=LogWarden spooled event replay
+After=postgresql.service
+
+[Service]
+Type=oneshot
+User=logwarden
+Group=logwarden
+WorkingDirectory=/opt/logwarden
+ExecStart=/usr/bin/php /opt/logwarden/bin/logwarden-spool-replay
+EnvironmentFile=-/etc/logwarden/env
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/logwarden/var

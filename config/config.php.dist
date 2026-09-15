@@ -1,0 +1,92 @@
+<?php
+/**
+ * LogWarden configuration.
+ *
+ * Copy to config/config.php and adjust. config/config.php is gitignored.
+ * Every value can be overridden by an environment variable of the same name
+ * in SCREAMING_SNAKE_CASE with an LW_ prefix, e.g. LW_DB_PASSWORD.
+ */
+
+declare(strict_types=1);
+
+return [
+    'db' => [
+        'host'     => '127.0.0.1',
+        'port'     => 5432,
+        'name'     => 'logwarden',
+        'user'     => 'logwarden',
+        'password' => 'change-me',
+        // Statement timeout for web queries (ms). Keeps a runaway search from
+        // pinning a core; the CLI workers override this with their own value.
+        'statement_timeout_ms' => 30000,
+    ],
+
+    // Path to the 32-byte libsodium master key used to encrypt the `secrets`
+    // table. Generate with: bin/logwarden-keygen
+    'secret_key_file' => LW_ROOT . '/config/secret.key',
+
+    'syslog' => [
+        // Fortinet sends to these. Ports below 1024 need CAP_NET_BIND_SERVICE
+        // (see deploy/systemd/logwarden-syslogd.service).
+        'udp'  => ['enabled' => true,  'bind' => '0.0.0.0', 'port' => 514],
+        'tcp'  => ['enabled' => true,  'bind' => '0.0.0.0', 'port' => 514],
+        'tls'  => [
+            'enabled'   => false,
+            'bind'      => '0.0.0.0',
+            'port'      => 6514,
+            'cert_file' => LW_ROOT . '/config/syslog-tls.pem', // cert + key, PEM
+            'ca_file'   => null,   // set to require client certificates
+        ],
+
+        // Only accept datagrams from these hosts/networks. Empty = accept all.
+        // Strongly recommended for UDP, which is trivially spoofable.
+        'allow_from' => [],        // e.g. ['10.0.0.0/8', '192.168.1.1']
+
+        // Events are buffered in memory and written in one batch. Flush happens
+        // when either bound is reached, whichever comes first.
+        'batch_size'     => 500,
+        'flush_interval' => 1.0,   // seconds
+
+        // If the database is unreachable, batches are written to var/spool as
+        // newline-delimited JSON and replayed by `bin/logwarden-spool-replay`.
+        // Without this, a database restart loses in-flight UDP events.
+        'spool_on_db_error' => true,
+        'max_message_bytes' => 65535,
+    ],
+
+    'web' => [
+        // 'ldap'  - Active Directory bind (production)
+        // 'local' - only local break-glass accounts
+        // 'none'  - NO AUTHENTICATION. Development only. Never expose the
+        //           listener beyond 127.0.0.1 with this setting.
+        'auth_mode'        => 'ldap',
+        'session_ttl'      => 8 * 3600,
+        'session_idle_ttl' => 60 * 60,
+        // Sent as Strict-Transport-Security once you terminate TLS.
+        'behind_tls'       => true,
+    ],
+
+    'ldap' => [
+        'hosts'         => ['ldaps://dc01.example.local', 'ldaps://dc02.example.local'],
+        'port'          => 636,
+        'base_dn'       => 'DC=example,DC=local',
+        'bind_format'   => '%s@example.local',   // %s = sAMAccountName
+        'tls_verify'    => true,
+        'tls_ca_file'   => null,
+        'timeout'       => 5,
+        // Optional service account used to read group memberships when the
+        // user's own bind is not allowed to. Stored in the `secrets` table.
+        'service_secret_ref' => null,
+    ],
+
+    'log' => [
+        'path'  => LW_ROOT . '/var/log/logwarden.log',
+        'level' => 'info',     // debug | info | warning | error
+        'stderr' => true,      // also write to stderr (systemd journal)
+    ],
+
+    'retention' => [
+        // Partitions are created this many days ahead by bin/logwarden-maintenance.
+        'partitions_ahead' => 7,
+    ],
+];

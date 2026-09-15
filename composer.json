@@ -1,0 +1,28 @@
+{
+    "name": "logwarden/logwarden",
+    "description": "Self-hosted SIEM-style log collection, analysis and alerting for mixed Windows/Fortinet infrastructure",
+    "type": "project",
+    "license": "MIT",
+    "require": {
+        "php": ">=8.2",
+        "ext-pdo": "*",
+        "ext-pdo_pgsql": "*",
+        "ext-json": "*",
+        "ext-sodium": "*",
+        "ext-curl": "*",
+        "ext-sockets": "*",
+        "ext-mbstring": "*"
+    },
+    "suggest": {
+        "ext-pcntl": "Graceful shutdown handling for the daemons",
+        "ext-ldap": "Required for Active Directory authentication of the web frontend"
+    },
+    "autoload": {
+        "psr-4": {
+            "LogWarden\\": "src/"
+        }
+    },
+    "config": {
+        "optimize-autoloader": true
+    }
+}

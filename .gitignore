@@ -1,0 +1,11 @@
+/config/config.php
+/config/secret.key
+/vendor/
+/var/log/*
+/var/spool/*
+/var/run/*
+!/var/log/.gitkeep
+!/var/spool/.gitkeep
+!/var/run/.gitkeep
+.DS_Store
+*.swp

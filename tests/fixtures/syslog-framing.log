@@ -1,0 +1,7 @@
+# RFC 5424 envelope wrapped around a FortiGate payload, as produced by a
+# relay in front of the appliance.
+<134>1 2026-09-15T08:00:01.123456Z fgt-hq.corp.local FortiGate - - - date=2026-09-15 time=10:00:01 devname="FGT-60F-HQ" devid="FG60FT920000001" tz="+0200" logid="0101039947" type="event" subtype="vpn" level="notice" action="tunnel-up" remip=203.0.113.9 user="jdoe" msg="SSL tunnel established"
+# RFC 5424 with structured data present.
+<134>1 2026-09-15T08:05:00Z relay01 FortiGate 1234 ID47 [origin ip="10.0.0.1" software="rsyslog"] date=2026-09-15 time=10:05:00 devname="FGT-60F-HQ" logid="0102043008" type="event" subtype="user" action="authentication" status="failed" user="asmith" srcip=198.51.100.44
+# RFC 3164 (BSD) envelope.
+<188>Sep 15 08:10:00 fgt-hq FortiGate: date=2026-09-15 time=10:10:00 devname="FGT-60F-HQ" logid="0101039426" type="event" subtype="vpn" action="ssl-login-fail" remip=198.51.100.44 user="asmith"

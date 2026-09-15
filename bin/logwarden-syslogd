@@ -1,0 +1,72 @@
+#!/usr/bin/env php
+<?php
+/**
+ * Syslog ingestion daemon.
+ *
+ * Listens for FortiGate syslog on UDP, TCP and TCP/TLS, normalises VPN and
+ * authentication events and writes them in batches.
+ *
+ * Usage: bin/logwarden-syslogd [--config=PATH]
+ */
+
+declare(strict_types=1);
+
+require dirname(__DIR__) . '/src/bootstrap.php';
+
+use LogWarden\Core\Config;
+use LogWarden\Core\Db;
+use LogWarden\Core\Logger;
+use LogWarden\Event\EventWriter;
+use LogWarden\Ingest\Fortigate\FortigateNormalizer;
+use LogWarden\Ingest\Syslog\PeerFilter;
+use LogWarden\Ingest\Syslog\SyslogServer;
+
+$options    = getopt('', ['config::', 'help']);
+$configFile = $options['config'] ?? null;
+
+if (isset($options['help'])) {
+    fwrite(STDOUT, "Usage: logwarden-syslogd [--config=PATH]\n");
+    exit(0);
+}
+
+try {
+    $config = Config::load(is_string($configFile) ? $configFile : null);
+    $logger = Logger::fromConfig($config, 'syslogd');
+    $db     = Db::fromConfig($config, $logger);
+
+    // The daemon writes small batches continuously; the web tier's statement
+    // timeout would abort a large flush after a backlog.
+    $db->pdo()->exec('SET statement_timeout = 0');
+
+    $syslog = $config->section('syslog');
+
+    $writer = new EventWriter(
+        db:            $db,
+        logger:        $logger,
+        batchSize:     (int) ($syslog['batch_size'] ?? 500),
+        flushInterval: (float) ($syslog['flush_interval'] ?? 1.0),
+        spoolDir:      ($syslog['spool_on_db_error'] ?? true) ? LW_ROOT . '/var/spool' : null,
+    );
+
+    $allowFrom = $syslog['allow_from'] ?? [];
+    if ($allowFrom === []) {
+        $logger->warning(
+            'syslog.allow_from is empty: events are accepted from any host. '
+            . 'Set it to your FortiGate addresses before exposing the listener.'
+        );
+    }
+
+    $server = new SyslogServer(
+        settings:    $syslog,
+        writer:      $writer,
+        logger:      $logger,
+        normalizers: [new FortigateNormalizer()],
+        peerFilter:  new PeerFilter(is_array($allowFrom) ? $allowFrom : []),
+    );
+
+    $server->run();
+    exit(0);
+} catch (Throwable $e) {
+    fwrite(STDERR, 'logwarden-syslogd: ' . $e->getMessage() . "\n");
+    exit(1);
+}

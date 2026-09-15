@@ -1,0 +1,184 @@
+#!/usr/bin/env php
+<?php
+/**
+ * Partition and retention maintenance. Run daily from a timer.
+ *
+ * - creates event partitions for the coming days
+ * - drops partitions older than the longest retention policy
+ * - creates the full-text index on recent partitions and drops it from old ones
+ * - prunes expired sessions
+ *
+ * Usage: bin/logwarden-maintenance [--config=PATH] [--dry-run]
+ */
+
+declare(strict_types=1);
+
+require dirname(__DIR__) . '/src/bootstrap.php';
+
+use LogWarden\Core\Config;
+use LogWarden\Core\Db;
+use LogWarden\Core\Logger;
+
+$options = getopt('', ['config::', 'dry-run', 'help']);
+
+if (isset($options['help'])) {
+    fwrite(STDOUT, "Usage: logwarden-maintenance [--config=PATH] [--dry-run]\n");
+    exit(0);
+}
+
+$dryRun = isset($options['dry-run']);
+
+try {
+    $config = Config::load(is_string($options['config'] ?? null) ? $options['config'] : null);
+    $logger = Logger::fromConfig($config, 'maintenance');
+    $db     = Db::fromConfig($config, $logger);
+    $db->pdo()->exec('SET statement_timeout = 0');
+
+    $today = new DateTimeImmutable('today', new DateTimeZone('UTC'));
+
+    // --- create upcoming partitions ---------------------------------------
+    $ahead = (int) $config->get('retention.partitions_ahead', 7);
+
+    for ($offset = 0; $offset <= $ahead; $offset++) {
+        $day = $today->modify("+{$offset} days")->format('Y-m-d');
+
+        if ($dryRun) {
+            fwrite(STDOUT, "would ensure partition for {$day}\n");
+            continue;
+        }
+
+        $result = $db->fetchValue('SELECT lw_create_event_partition(?::date)', [$day]);
+        if (!str_contains((string) $result, '(exists)')) {
+            $logger->info('Partition ensured', ['result' => $result]);
+        }
+    }
+
+    // --- retention --------------------------------------------------------
+    // Partitions hold mixed source types, so a partition may only be dropped
+    // once it is older than the most generous policy. Rows that outlive their
+    // own policy inside a surviving partition are deleted per source type.
+    $policies = $db->fetchAll('SELECT source_type, keep_days, fts_days FROM retention_policies');
+    $maxKeep  = 0;
+    $maxFts   = 0;
+
+    foreach ($policies as $policy) {
+        $maxKeep = max($maxKeep, (int) $policy['keep_days']);
+        $maxFts  = max($maxFts, (int) $policy['fts_days']);
+    }
+
+    if ($maxKeep > 0) {
+        $partitions = $db->fetchAll(
+            "SELECT c.relname
+               FROM pg_class c
+               JOIN pg_inherits i ON i.inhrelid = c.oid
+               JOIN pg_class p ON p.oid = i.inhparent
+              WHERE p.relname = 'events' AND c.relname ~ '^events_[0-9]{8}$'
+              ORDER BY c.relname"
+        );
+
+        $cutoff = $today->modify("-{$maxKeep} days");
+
+        foreach ($partitions as $partition) {
+            $stamp = substr($partition['relname'], 7);
+            $day   = DateTimeImmutable::createFromFormat('Ymd', $stamp, new DateTimeZone('UTC'));
+
+            if ($day === false || $day->modify('+1 day') > $cutoff) {
+                continue;
+            }
+
+            if ($dryRun) {
+                fwrite(STDOUT, "would drop {$partition['relname']}\n");
+                continue;
+            }
+
+            $logger->info('Dropping expired partition', [
+                'result' => $db->fetchValue('SELECT lw_drop_event_partition(?::date)', [$day->format('Y-m-d')]),
+            ]);
+        }
+
+        // Per-source-type expiry inside partitions that are still alive.
+        foreach ($policies as $policy) {
+            if ((int) $policy['keep_days'] >= $maxKeep) {
+                continue;   // handled by the partition drop above
+            }
+
+            $sourceCutoff = $today->modify('-' . (int) $policy['keep_days'] . ' days')->format('Y-m-d');
+
+            if ($dryRun) {
+                fwrite(STDOUT, "would delete {$policy['source_type']} events before {$sourceCutoff}\n");
+                continue;
+            }
+
+            $deleted = $db->execute(
+                'DELETE FROM events WHERE source_type = ?::source_type_t AND ts < ?::timestamptz',
+                [$policy['source_type'], $sourceCutoff],
+            );
+
+            if ($deleted > 0) {
+                $logger->info('Expired events removed', [
+                    'source_type' => $policy['source_type'],
+                    'rows'        => $deleted,
+                ]);
+            }
+        }
+    }
+
+    // --- full-text index lifecycle ----------------------------------------
+    // The GIN index roughly doubles write cost and adds 30-40% storage, so it
+    // only exists on the partitions a free-text search actually reaches.
+    $ftsCutoff = $today->modify("-{$maxFts} days");
+    $partitions = $db->fetchAll(
+        "SELECT c.relname,
+                EXISTS (
+                    SELECT 1 FROM pg_index x
+                      JOIN pg_class ic ON ic.oid = x.indexrelid
+                     WHERE x.indrelid = c.oid AND ic.relname = c.relname || '_tsv_idx'
+                ) AS has_index
+           FROM pg_class c
+           JOIN pg_inherits i ON i.inhrelid = c.oid
+           JOIN pg_class p ON p.oid = i.inhparent
+          WHERE p.relname = 'events' AND c.relname ~ '^events_[0-9]{8}$'"
+    );
+
+    foreach ($partitions as $partition) {
+        $name  = $partition['relname'];
+        $day   = DateTimeImmutable::createFromFormat('Ymd', substr($name, 7), new DateTimeZone('UTC'));
+        $wants = $day !== false && $day >= $ftsCutoff;
+        $has   = (bool) $partition['has_index'];
+
+        if ($wants === $has) {
+            continue;
+        }
+
+        if ($dryRun) {
+            fwrite(STDOUT, ($wants ? 'would create' : 'would drop') . " FTS index on {$name}\n");
+            continue;
+        }
+
+        if ($wants) {
+            // CONCURRENTLY keeps ingestion writing while the index builds.
+            $db->pdo()->exec(sprintf(
+                'CREATE INDEX CONCURRENTLY IF NOT EXISTS %s ON %s USING gin (search_tsv)',
+                $name . '_tsv_idx',
+                $name,
+            ));
+            $logger->info('Full-text index created', ['partition' => $name]);
+        } else {
+            $db->pdo()->exec(sprintf('DROP INDEX CONCURRENTLY IF EXISTS %s', $name . '_tsv_idx'));
+            $logger->info('Full-text index dropped', ['partition' => $name]);
+        }
+    }
+
+    // --- session cleanup ---------------------------------------------------
+    if (!$dryRun) {
+        $expired = $db->execute('DELETE FROM sessions WHERE expires_at < now()');
+        if ($expired > 0) {
+            $logger->info('Expired sessions removed', ['rows' => $expired]);
+        }
+    }
+
+    exit(0);
+} catch (Throwable $e) {
+    fwrite(STDERR, 'logwarden-maintenance: ' . $e->getMessage() . "\n");
+    exit(1);
+}

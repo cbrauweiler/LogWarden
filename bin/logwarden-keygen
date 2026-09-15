@@ -1,0 +1,51 @@
+#!/usr/bin/env php
+<?php
+/**
+ * Generates the libsodium master key used to encrypt the `secrets` table.
+ *
+ * Usage: bin/logwarden-keygen [--force]
+ *
+ * Losing this key makes every stored credential unrecoverable, and replacing it
+ * invalidates them all, so back it up alongside (not inside) your database dump.
+ */
+
+declare(strict_types=1);
+
+require dirname(__DIR__) . '/src/bootstrap.php';
+
+use LogWarden\Security\SecretBox;
+
+$options = getopt('', ['force', 'out::', 'help']);
+
+if (isset($options['help'])) {
+    fwrite(STDOUT, "Usage: logwarden-keygen [--out=PATH] [--force]\n");
+    exit(0);
+}
+
+$path = is_string($options['out'] ?? null) ? $options['out'] : LW_ROOT . '/config/secret.key';
+
+if (is_file($path) && !isset($options['force'])) {
+    fwrite(STDERR, "Refusing to overwrite existing key at {$path}.\n");
+    fwrite(STDERR, "Every secret in the database is encrypted with it. Use --force only if you\n");
+    fwrite(STDERR, "intend to re-enter all credentials afterwards.\n");
+    exit(1);
+}
+
+$key = SecretBox::generateKey();
+
+// Create with restrictive permissions before any content is written, so the
+// key is never briefly readable by other users on the host.
+$handle = fopen($path, 'cb');
+if ($handle === false) {
+    fwrite(STDERR, "Cannot open {$path} for writing.\n");
+    exit(1);
+}
+
+chmod($path, 0o600);
+ftruncate($handle, 0);
+fwrite($handle, $key . "\n");
+fclose($handle);
+
+fwrite(STDOUT, "Master key written to {$path} (mode 0600).\n");
+fwrite(STDOUT, "Back it up now: without it, stored credentials cannot be decrypted.\n");
+exit(0);

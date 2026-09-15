@@ -1,0 +1,4 @@
+# FortiOS CEF output (config log syslogd setting -> format cef).
+<189>CEF:0|Fortinet|Fortigate|v7.4.4|0101039426|ssl-login-fail|8|deviceExternalId=FG60FT920000001 FTNTFGTeventtime=1789459275 cat=vpn FTNTFGTsubtype=vpn src=198.51.100.44 suser=asmith act=ssl-login-fail outcome=failure msg=SSL user failed to logged in
+<190>CEF:0|Fortinet|Fortigate|v7.4.4|0102043012|Authentication success|3|deviceExternalId=FG60FT920000001 FTNTFGTeventtime=1789459375 cat=user src=203.0.113.9 dst=10.10.0.1 suser=jdoe act=authentication outcome=success cs1Label=method cs1=fortitoken msg=User jdoe succeeded in authentication
+<189>CEF:0|Fortinet|Fortigate|v7.4.4|0101039947|ssl-tunnel-up|5|deviceExternalId=FG60FT920000001 dvchost=FGT-60F-HQ FTNTFGTeventtime=1789459201 cat=vpn src=203.0.113.9 suser=jdoe act=tunnel-up outcome=success FTNTFGTtunneltype=ssl-tunnel msg=SSL tunnel established

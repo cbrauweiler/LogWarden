@@ -1,0 +1,85 @@
+#!/usr/bin/env php
+<?php
+/**
+ * Applies pending SQL migrations from db/migrations in filename order.
+ *
+ * Usage: bin/logwarden-migrate [--config=PATH] [--dry-run]
+ */
+
+declare(strict_types=1);
+
+require dirname(__DIR__) . '/src/bootstrap.php';
+
+use LogWarden\Core\Config;
+use LogWarden\Core\Db;
+
+$options = getopt('', ['config::', 'dry-run', 'help']);
+
+if (isset($options['help'])) {
+    fwrite(STDOUT, "Usage: logwarden-migrate [--config=PATH] [--dry-run]\n");
+    exit(0);
+}
+
+try {
+    $config = Config::load(is_string($options['config'] ?? null) ? $options['config'] : null);
+    $db     = Db::fromConfig($config);
+    $db->pdo()->exec('SET statement_timeout = 0');
+
+    $db->execute(
+        'CREATE TABLE IF NOT EXISTS schema_migrations (
+            version     text PRIMARY KEY,
+            applied_at  timestamptz NOT NULL DEFAULT now(),
+            checksum    text NOT NULL
+         )'
+    );
+
+    $applied = [];
+    foreach ($db->fetchAll('SELECT version, checksum FROM schema_migrations') as $row) {
+        $applied[$row['version']] = $row['checksum'];
+    }
+
+    $files = glob(LW_ROOT . '/db/migrations/*.sql') ?: [];
+    sort($files, SORT_STRING);
+
+    $pending = 0;
+
+    foreach ($files as $file) {
+        $version  = basename($file, '.sql');
+        $sql      = (string) file_get_contents($file);
+        $checksum = hash('sha256', $sql);
+
+        if (isset($applied[$version])) {
+            if ($applied[$version] !== $checksum) {
+                fwrite(STDERR, "ERROR: {$version} was modified after it was applied.\n");
+                fwrite(STDERR, "Migrations are immutable once applied; add a new one instead.\n");
+                exit(1);
+            }
+            continue;
+        }
+
+        $pending++;
+
+        if (isset($options['dry-run'])) {
+            fwrite(STDOUT, "would apply {$version}\n");
+            continue;
+        }
+
+        fwrite(STDOUT, "applying {$version} ... ");
+
+        // Each migration file manages its own BEGIN/COMMIT, so the bookkeeping
+        // row is written separately rather than wrapped around it.
+        $db->pdo()->exec($sql);
+        $db->execute(
+            'INSERT INTO schema_migrations (version, checksum) VALUES (?, ?)',
+            [$version, $checksum],
+        );
+
+        fwrite(STDOUT, "ok\n");
+    }
+
+    fwrite(STDOUT, $pending === 0 ? "Database is up to date.\n" : "Done ({$pending} migration(s)).\n");
+    exit(0);
+} catch (Throwable $e) {
+    fwrite(STDERR, 'logwarden-migrate: ' . $e->getMessage() . "\n");
+    exit(1);
+}

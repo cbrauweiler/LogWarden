@@ -1,0 +1,98 @@
+#!/usr/bin/env php
+<?php
+/**
+ * Replays spooled event batches written while the database was unreachable.
+ *
+ * Usage: bin/logwarden-spool-replay [--config=PATH] [--dir=PATH] [--keep]
+ */
+
+declare(strict_types=1);
+
+require dirname(__DIR__) . '/src/bootstrap.php';
+
+use LogWarden\Core\Config;
+use LogWarden\Core\Db;
+use LogWarden\Core\Logger;
+
+$options = getopt('', ['config::', 'dir::', 'keep', 'help']);
+
+if (isset($options['help'])) {
+    fwrite(STDOUT, "Usage: logwarden-spool-replay [--config=PATH] [--dir=PATH] [--keep]\n");
+    exit(0);
+}
+
+const COLUMNS = [
+    'ts', 'source_type', 'source_host', 'event_type', 'username',
+    'src_ip', 'dst_ip', 'result', 'raw_message', 'details', 'dedup_key',
+];
+
+try {
+    $config = Config::load(is_string($options['config'] ?? null) ? $options['config'] : null);
+    $logger = Logger::fromConfig($config, 'spool-replay');
+    $db     = Db::fromConfig($config, $logger);
+    $db->pdo()->exec('SET statement_timeout = 0');
+
+    $dir   = is_string($options['dir'] ?? null) ? $options['dir'] : LW_ROOT . '/var/spool';
+    $files = glob($dir . '/*.ndjson') ?: [];
+    sort($files, SORT_STRING);
+
+    if ($files === []) {
+        fwrite(STDOUT, "Nothing to replay.\n");
+        exit(0);
+    }
+
+    $totalRows  = 0;
+    $totalFiles = 0;
+
+    foreach ($files as $file) {
+        $rows = [];
+
+        foreach (file($file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [] as $line) {
+            $row = json_decode($line, true);
+            if (is_array($row)) {
+                $rows[] = $row;
+            }
+        }
+
+        if ($rows === []) {
+            unlink($file);
+            continue;
+        }
+
+        // Chunked so one large spool file cannot exceed PostgreSQL's 65535
+        // bound parameters per statement.
+        foreach (array_chunk($rows, 500) as $chunk) {
+            $placeholders = [];
+            $params       = [];
+
+            foreach ($chunk as $row) {
+                $placeholders[] = '(' . rtrim(str_repeat('?,', count(COLUMNS)), ',') . ')';
+                foreach (COLUMNS as $column) {
+                    $params[] = $row[$column] ?? null;
+                }
+            }
+
+            $db->execute(
+                'INSERT INTO events (' . implode(', ', COLUMNS) . ') VALUES '
+                . implode(', ', $placeholders) . ' ON CONFLICT DO NOTHING',
+                $params,
+            );
+        }
+
+        $totalRows += count($rows);
+        $totalFiles++;
+
+        if (isset($options['keep'])) {
+            rename($file, $file . '.done');
+        } else {
+            unlink($file);
+        }
+    }
+
+    $logger->info('Spool replayed', ['files' => $totalFiles, 'events' => $totalRows]);
+    fwrite(STDOUT, "Replayed {$totalRows} event(s) from {$totalFiles} file(s).\n");
+    exit(0);
+} catch (Throwable $e) {
+    fwrite(STDERR, 'logwarden-spool-replay: ' . $e->getMessage() . "\n");
+    exit(1);
+}

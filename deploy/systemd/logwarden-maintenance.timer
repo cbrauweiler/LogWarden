@@ -1,0 +1,11 @@
+[Unit]
+Description=Run LogWarden maintenance daily
+
+[Timer]
+# Early enough that tomorrow's partition exists well before midnight UTC.
+OnCalendar=*-*-* 03:17:00
+RandomizedDelaySec=300
+Persistent=true
+
+[Install]
+WantedBy=timers.target

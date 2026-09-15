@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+#
+# Development web server. Binds to localhost only — the frontend has no
+# authentication yet, so it must not be reachable from the network.
+#
+# Usage: bin/logwarden-serve [port]
+set -euo pipefail
+
+PORT="${1:-8080}"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+echo "LogWarden dev server on http://127.0.0.1:${PORT}"
+echo "Config: ${LW_CONFIG:-${ROOT}/config/config.php}"
+
+exec php -S "127.0.0.1:${PORT}" -t "${ROOT}/public" "${ROOT}/deploy/dev-router.php"
