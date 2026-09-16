@@ -25,7 +25,7 @@ use LogWarden\Ingest\Winrm\WinrmClient;
 use LogWarden\Ingest\Winrm\WinrmCollector;
 use LogWarden\Security\SecretBox;
 
-$options = getopt('', ['config::', 'source::', 'dry-run', 'list', 'test::', 'reset::', 'discover::', 'force', 'help']);
+$options = getopt('', ['config::', 'source::', 'dry-run', 'list', 'test::', 'reset::', 'discover::', 'header::', 'force', 'help']);
 
 if (isset($options['help'])) {
     fwrite(STDOUT, <<<TXT
@@ -37,6 +37,7 @@ if (isset($options['help'])) {
       --list          show all WinRM sources with their health
       --test=NAME     check reachability and credentials, collect nothing
       --discover=NAME zeigt, welche Event-IDs der Kanal tatsächlich enthält
+      --header=NAME   DHCP: den Kopfblock der Logdatei ausgeben (Event-IDs des Servers)
       --reset=NAME    clear the bookmark so the next run starts over
       --force         ignore poll_interval_s and run now
 
@@ -57,7 +58,10 @@ try {
 
     // --- list --------------------------------------------------------------
     if (isset($options['list'])) {
-        $rows = $sources->health();
+        $rows = array_values(array_filter(
+            $sources->health(),
+            static fn (array $r): bool => in_array($r['collector'], ['winrm', 'dhcp_csv'], true),
+        ));
         if ($rows === []) {
             fwrite(STDOUT, "Keine Quellen konfiguriert.\n");
             exit(0);
@@ -247,6 +251,42 @@ try {
         exit(0);
     }
 
+    // --- header -------------------------------------------------------------
+    // The DHCP server writes its own event-id list into the top of every log
+    // file, so this is the DHCP equivalent of --discover: it asks the server
+    // rather than trusting the catalogue.
+    if (is_string($options['header'] ?? null) && $options['header'] !== '') {
+        $source = $sources->findByName($options['header']);
+        if ($source === null) {
+            fwrite(STDERR, "Unbekannte Quelle: {$options['header']}\n");
+            exit(1);
+        }
+
+        if ($source->collector !== 'dhcp_csv') {
+            fwrite(STDERR, "--header gibt es nur für DHCP-Quellen.\n");
+            exit(1);
+        }
+
+        $query  = new LogWarden\Ingest\Winrm\DhcpLogQuery(
+            (string) $source->setting('log_path', LogWarden\Ingest\Winrm\DhcpLogQuery::DEFAULT_PATH),
+            [],
+            1,
+            (bool) $source->setting('ipv6', false),
+        );
+        $shell  = new LogWarden\Ingest\Winrm\WinrmShell($clientFactory($source), $logger, 60);
+        $result = $shell->run('powershell.exe', LogWarden\Ingest\Winrm\EventLogQuery::powershellArguments(
+            $query->headerScript(),
+        ), 120);
+
+        if ($result['exit_code'] !== 0) {
+            fwrite(STDERR, 'Logdatei nicht lesbar: ' . (trim($result['stderr']) ?: 'Exit-Code ' . $result['exit_code']) . "\n");
+            exit(1);
+        }
+
+        fwrite(STDOUT, $result['stdout']);
+        exit(0);
+    }
+
     // --- collect -----------------------------------------------------------
     $dryRun = isset($options['dry-run']);
     $force  = isset($options['force']);
@@ -265,7 +305,13 @@ try {
     $failures  = 0;
     $ran       = 0;
 
-    foreach ($sources->all('winrm') as $source) {
+    // Both collectors ride the same transport: an event channel and the DHCP
+    // audit file are read completely differently, but both fit the bounded
+    // window, so they share the bookmark and the catch-up logic.
+    $candidates = array_merge($sources->all('winrm'), $sources->all('dhcp_csv'));
+    usort($candidates, static fn (IngestSource $a, IngestSource $b): int => strcmp($a->name, $b->name));
+
+    foreach ($candidates as $source) {
         if ($only !== null && $source->name !== $only) {
             continue;
         }

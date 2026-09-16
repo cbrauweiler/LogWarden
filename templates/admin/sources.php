@@ -5,6 +5,9 @@
  * @var array $catalogue
  * @var array $dnsAudit
  * @var array $dnsServer
+ * @var array $dhcpCat
+ * @var array $dhcpIds
+ * @var string $dhcpPath
  * @var array $defaultIds
  * @var array $runs
  * @var array $plugins
@@ -15,6 +18,7 @@
  */
 
 use LogWarden\Ingest\Windows\AdEventCatalog;
+use LogWarden\Ingest\Dhcp\DhcpEventCatalog;
 use LogWarden\Ingest\Windows\DnsEventCatalog;
 use LogWarden\Web\Csrf;
 use LogWarden\Web\View;
@@ -25,7 +29,14 @@ $num = static fn (int|float $v): string => View::number($v);
 // Prefilled from the source being edited, or the defaults for a new one.
 // Without this, changing the poll interval on an existing source would submit
 // an empty event selection and silently reset it.
+$isDhcp   = $edit !== null && $edit->collector === 'dhcp_csv';
 $selected = $edit === null ? $defaultIds : $edit->eventIds();
+
+// DHCP ids are strings ('00'..'64'); eventIds() casts to int for the event
+// channels, so the raw config is read here instead.
+$dhcpSelected = $edit === null
+    ? $dhcpIds
+    : array_map('strval', (array) $edit->setting('event_ids', []));
 $on       = static fn (bool $v): string => $v ? 'checked' : '';
 $val      = static function (string $key, mixed $fallback) use ($edit): mixed {
     if ($edit === null) {
@@ -338,6 +349,22 @@ $ago = static function (?string $timestamp): string {
             <?= Csrf::field() ?>
             <input type="hidden" name="action" value="save">
 
+            <div class="field">
+                <label class="field__label" for="kind">Quellenart</label>
+                <select class="select" id="kind" name="kind">
+                    <option value="winrm" <?= $isDhcp ? '' : 'selected' ?>>
+                        Windows-Ereignisprotokoll (AD, DNS, System)
+                    </option>
+                    <option value="dhcp_csv" <?= $isDhcp ? 'selected' : '' ?>>
+                        DHCP-Audit-Log (CSV-Dateien auf dem Server)
+                    </option>
+                </select>
+                <p class="field__hint">
+                    Beide gehen über WinRM. Das DHCP-Protokoll ist keine Ereignisquelle, sondern
+                    eine Datei je Wochentag im Dateisystem des Servers.
+                </p>
+            </div>
+
             <div class="grid-2" style="gap:0 1.5rem">
                 <div class="field">
                     <label class="field__label" for="name">Name</label>
@@ -352,7 +379,7 @@ $ago = static function (?string $timestamp): string {
                     <p class="field__hint">FQDN oder IP, ohne Schema und ohne Pfad.</p>
                 </div>
 
-                <div class="field">
+                <div class="field" data-kind="winrm" <?= $isDhcp ? 'hidden' : '' ?>>
                     <label class="field__label" for="channel">Kanal</label>
                     <select class="select" id="channel" name="channel">
                         <?php foreach ($channels as $value => $meta): ?>
@@ -362,6 +389,16 @@ $ago = static function (?string $timestamp): string {
                             </option>
                         <?php endforeach; ?>
                     </select>
+                </div>
+
+                <div class="field" data-kind="dhcp_csv" <?= $isDhcp ? '' : 'hidden' ?>>
+                    <label class="field__label" for="log_path">Protokollverzeichnis</label>
+                    <input class="input" id="log_path" name="log_path" maxlength="255"
+                           value="<?= $e($edit === null ? $dhcpPath : $edit->setting('log_path', $dhcpPath)) ?>">
+                    <p class="field__hint">
+                        Verzeichnis, nicht Datei — der Server legt je Wochentag eine an und
+                        benennt sie in seiner eigenen Sprache.
+                    </p>
                 </div>
 
                 <div class="field">
@@ -529,20 +566,63 @@ $ago = static function (?string $timestamp): string {
                 <?php endforeach; ?>
             </fieldset>
 
+            <fieldset class="fieldset" data-events="dhcp" <?= $isDhcp ? '' : 'hidden' ?>>
+                <legend class="fieldset__legend">Ereignisse — DHCP</legend>
+                <p class="field__hint">
+                    Die Event-IDs schreibt der DHCP-Server selbst in den Kopf jeder Logdatei —
+                    sie sind hier nicht geraten. Was ein konkreter Server dokumentiert, zeigt
+                    <code>bin/logwarden-winrm --header=&lt;Quelle&gt;</code>.
+                </p>
+                <p class="field__hint">
+                    <strong>10 und 11 sind der Großteil des Volumens</strong> und trotzdem
+                    vorausgewählt: sie sind das, was eine Adresse Wochen später noch einer
+                    Maschine zuordnet — der eigentliche Grund, DHCP überhaupt zu sammeln.
+                    Sie sind das Erste, was man abschaltet, wenn das Volumen drückt.
+                </p>
+
+                <?php foreach ($dhcpCat as $category => $entries): ?>
+                    <h3 class="fieldset__group"><?= $e(DhcpEventCatalog::categoryLabel($category)) ?></h3>
+                    <div class="checkgrid">
+                        <?php foreach ($entries as $entry): ?>
+                            <label class="check">
+                                <input type="checkbox" name="event_ids[]" value="<?= $e($entry['id']) ?>"
+                                       <?= in_array($entry['id'], $dhcpSelected, true) ? 'checked' : '' ?>>
+                                <span>
+                                    <code><?= $e($entry['id']) ?></code> <?= $e($entry['label']) ?>
+                                    <?php if ($entry['volume']): ?>
+                                        <span class="badge badge--warn"><span class="badge__dot"></span>Volumen</span>
+                                    <?php endif; ?>
+                                </span>
+                            </label>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endforeach; ?>
+            </fieldset>
+
             <script>
                 // Progressive enhancement: ohne JavaScript sind beide Listen
                 // sichtbar und das Formular funktioniert unverändert.
                 (function () {
                     var channel = document.getElementById('channel');
-                    if (!channel) { return; }
+                    var kind    = document.getElementById('kind');
+                    if (!channel || !kind) { return; }
+
                     var groups = document.querySelectorAll('[data-events]');
-                    function sync() {
-                        var dns = /DNSServer|DNS Server/i.test(channel.value);
-                        groups.forEach(function (g) {
-                            g.hidden = (g.dataset.events === 'dns') !== dns;
-                        });
+                    var fields = document.querySelectorAll('[data-kind]');
+
+                    function wanted() {
+                        if (kind.value === 'dhcp_csv') { return 'dhcp'; }
+                        return /DNSServer|DNS Server/i.test(channel.value) ? 'dns' : 'windows';
                     }
+
+                    function sync() {
+                        var want = wanted();
+                        groups.forEach(function (g) { g.hidden = g.dataset.events !== want; });
+                        fields.forEach(function (f) { f.hidden = f.dataset.kind !== kind.value; });
+                    }
+
                     channel.addEventListener('change', sync);
+                    kind.addEventListener('change', sync);
                     sync();
                 })();
             </script>

@@ -11,7 +11,9 @@ use LogWarden\Event\SourceType;
 use LogWarden\Ingest\IngestSource;
 use LogWarden\Ingest\SourceRepository;
 use LogWarden\Ingest\Windows\AdEventCatalog;
+use LogWarden\Ingest\Dhcp\DhcpEventCatalog;
 use LogWarden\Ingest\Windows\DnsEventCatalog;
+use LogWarden\Ingest\Winrm\DhcpLogQuery;
 use LogWarden\Ingest\Winrm\EventLogQuery;
 use LogWarden\Ingest\Winrm\WinrmClient;
 use LogWarden\Ingest\Winrm\WinrmShell;
@@ -57,6 +59,9 @@ final class SourceController
             'catalogue'  => AdEventCatalog::grouped(),
             'dnsAudit'   => DnsEventCatalog::grouped('Microsoft-Windows-DNSServer/Audit'),
             'dnsServer'  => DnsEventCatalog::grouped('DNS Server'),
+            'dhcpCat'    => DhcpEventCatalog::grouped(),
+            'dhcpIds'    => DhcpEventCatalog::defaultIds(),
+            'dhcpPath'   => DhcpLogQuery::DEFAULT_PATH,
             'defaultIds' => AdEventCatalog::defaultIds(),
             'runs'       => $this->recentRuns(),
             'plugins'    => $this->plugins(),
@@ -104,12 +109,13 @@ final class SourceController
         $host    = trim((string) ($_POST['target_host'] ?? ''));
         $channel = (string) ($_POST['channel'] ?? 'Security');
         $user    = trim((string) ($_POST['username'] ?? ''));
+        $kind    = ($_POST['kind'] ?? 'winrm') === 'dhcp_csv' ? 'dhcp_csv' : 'winrm';
 
         if ($name === '' || $host === '' || $user === '') {
             return $this->show([], ['Name, Host und Konto sind Pflichtfelder.']);
         }
 
-        if (!isset(self::CHANNELS[$channel])) {
+        if ($kind === 'winrm' && !isset(self::CHANNELS[$channel])) {
             return $this->show([], ['Unbekannter Kanal.']);
         }
 
@@ -120,18 +126,33 @@ final class SourceController
             return $this->show([], ['Der Host darf nur Buchstaben, Ziffern, Punkt, Bindestrich und Unterstrich enthalten.']);
         }
 
-        $ids = array_values(array_filter(
-            array_map('intval', (array) ($_POST['event_ids'] ?? [])),
-            static fn (int $id): bool => $id > 0,
-        ));
+        // DHCP ids are two-character strings ('00'..'64') and must stay that
+        // way: casting them to int would turn '00' into 0 and lose the
+        // "log started" event entirely.
+        $ids = $kind === 'dhcp_csv'
+            ? array_values(array_unique(array_filter(
+                array_map(
+                    static fn (mixed $v): string => str_pad(trim((string) $v), 2, '0', STR_PAD_LEFT),
+                    (array) ($_POST['event_ids'] ?? []),
+                ),
+                static fn (string $id): bool => preg_match('/^\d{2}$/', $id) === 1,
+            )))
+            : array_values(array_filter(
+                array_map('intval', (array) ($_POST['event_ids'] ?? [])),
+                static fn (int $id): bool => $id > 0,
+            ));
 
         // An empty selection means "collect the whole channel". On Security
         // that is the one outcome nobody wants by accident — it is the busiest
         // log on the machine. On the DNS channels it is the sensible default:
         // the audit channel writes nothing on a quiet day, and an unrecognised
         // change is exactly what one wants to keep.
-        if ($ids === [] && !DnsEventCatalog::isDnsChannel($channel)) {
+        if ($ids === [] && $kind === 'winrm' && !DnsEventCatalog::isDnsChannel($channel)) {
             return $this->show([], ['Mindestens ein Ereignis auswählen.']);
+        }
+
+        if ($kind === 'dhcp_csv') {
+            return $this->saveDhcpSource($name, $host, $user, $ids);
         }
 
         $sourceType = self::CHANNELS[$channel][1];
@@ -174,6 +195,65 @@ final class SourceController
         $this->audit('source.save', $name);
 
         return $this->show(['Quelle ' . $name . ' gespeichert.']);
+    }
+
+    /**
+     * A DHCP source reads a file, not a channel.
+     *
+     * @param list<string> $ids
+     */
+    private function saveDhcpSource(string $name, string $host, string $user, array $ids): Response
+    {
+        $path = trim((string) ($_POST['log_path'] ?? DhcpLogQuery::DEFAULT_PATH));
+
+        // A directory, not a file: the server writes one per weekday and names
+        // them in its own locale, so the collector enumerates rather than
+        // guesses. Rejecting anything with a wildcard or a quote keeps the
+        // value from turning into something else inside the PowerShell literal.
+        // Vier Backslashes: zwei kommen im einfach gequoteten PHP-String an,
+        // und die braucht die Regex-Engine, um einen literalen zu treffen.
+        // Mit zweien stand hier \[ — eine Escape-Sequenz für eine eckige
+        // Klammer, die jeden gültigen Pfad abgelehnt hat.
+        // Das Apostroph ist mit ausgeschlossen, obwohl DhcpLogQuery es ohnehin
+        // verdoppelt: eine Prüfung, die sich allein darauf verlässt, dass die
+        // Stelle weiter unten korrekt bleibt, ist eine Prüfung weniger.
+        if ($path === '' || preg_match('/^[A-Za-z]:\\\\[^*?"\'<>|\r\n\x00]*$/', $path) !== 1) {
+            return $this->show([], [
+                'Der Pfad muss ein lokales Verzeichnis auf dem Server sein, z. B. '
+                . 'C:\\Windows\\System32\\dhcp.',
+            ]);
+        }
+
+        $id = $this->sources->upsert([
+            'name'            => $name,
+            'collector'       => 'dhcp_csv',
+            'source_type'     => 'dhcp',
+            'target_host'     => $host,
+            'enabled'         => !empty($_POST['enabled']),
+            'config'          => [
+                'log_path'         => rtrim($path, '\\'),
+                'event_ids'        => $ids,
+                'ipv6'             => !empty($_POST['ipv6']),
+                'tls'              => !empty($_POST['tls']),
+                'tls_verify'       => !empty($_POST['tls_verify']),
+                'window_seconds'   => $this->clamp($_POST['window_seconds'] ?? null, 300, 86400, 3600),
+                'max_events'       => $this->clamp($_POST['max_events'] ?? null, 100, 500000, 200000),
+                'initial_lookback' => $this->clamp($_POST['initial_lookback'] ?? null, 300, 86400 * 7, 86400),
+            ] + (empty($_POST['port']) ? [] : ['port' => $this->clamp($_POST['port'], 1, 65535, 5986)]),
+            'username'        => $user,
+            'auth_mode'       => in_array($_POST['auth_mode'] ?? '', ['ntlm', 'kerberos', 'basic'], true)
+                ? (string) $_POST['auth_mode'] : 'ntlm',
+            'poll_interval_s' => $this->clamp($_POST['poll_interval_s'] ?? null, 60, 86400, 900),
+        ]);
+
+        $password = (string) ($_POST['password'] ?? '');
+        if ($password !== '') {
+            $this->storePassword($id, $name, $password);
+        }
+
+        $this->audit('source.save', $name);
+
+        return $this->show(['DHCP-Quelle ' . $name . ' gespeichert.']);
     }
 
     /**

@@ -147,7 +147,10 @@ final class SourceRepository
                     s.enabled, s.last_success_at, s.last_run_at, s.last_error, s.last_error_at,
                     to_char(s.last_success_at, 'DD.MM. HH24:MI') AS last_success_label,
                     s.events_total, s.consecutive_failures, s.poll_interval_s,
-                    s.config->>'channel' AS channel,
+                    -- A DHCP source has no channel; what identifies it is the
+                    -- directory it reads. One column, so the overview stays one
+                    -- table.
+                    coalesce(s.config->>'channel', s.config->>'log_path') AS channel,
                     (SELECT count(*) FROM ingest_runs r
                       WHERE r.source_id = s.id AND r.started_at > now() - interval '24 hours'
                         AND r.status = 'error') AS errors_24h,

@@ -134,6 +134,26 @@ Windows' Fassung zu 4624 rund 1,2 KB immer gleichen Erklärtext enthält.
 Abgefragt wird ein **Zeitraum**, nie eine Event-Anzahl. Die Begründung und die
 Windows-seitige Einrichtung stehen in [docs/winrm.md](winrm.md).
 
+Welcher Normalizer eine Zeile bekommt, entscheidet die Quelle, nicht der
+Transport:
+
+| Quelle | Normalizer |
+|---|---|
+| `Security`, `System` | `AdNormalizer` |
+| `Microsoft-Windows-DNSServer/Audit`, `DNS Server` | `DnsNormalizer` |
+| `collector = dhcp_csv` | `DhcpNormalizer` |
+
+## DHCP-Audit-Log
+
+Dieselbe Strecke, aber kein Ereigniskanal: der DHCP-Server schreibt CSV-Dateien
+ins Dateisystem, eine je Wochentag. Das Zeitfenster, das Lesezeichen und die
+Aufholmechanik sind trotzdem dieselben — nur das PowerShell dahinter liest eine
+Datei statt eines Kanals.
+
+Drei Eigenheiten werden auf der Windows-Seite behandelt, weil dort die
+Antworten liegen: die Dateinamen sind lokalisiert, die Datumsangaben auch (und
+mehrdeutig), und die Datei ist ANSI. Details in [docs/dhcp.md](dhcp.md).
+
 ## Betrieb
 
 ```bash

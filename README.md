@@ -387,7 +387,7 @@ am Ende von [docs/winrm.md](docs/winrm.md).
 | WinRM-Collector für AD-Sicherheitsereignisse ([Doku](docs/winrm.md)) | fertig |
 | Quellen als Plugins, FortiGate und Cisco ASA ([Doku](docs/plugins.md)) | fertig |
 | DNS: Audit- und Server-Kanal mit eigenem Normalizer ([Strategie](docs/dns.md)) | fertig |
-| DHCP-CSV-Import | offen |
+| DHCP-Audit-Log über WinRM ([Doku](docs/dhcp.md)) | fertig |
 | CI-Pipeline: Lint und Tests bei jedem Push | offen |
 | Verifikation des WinRM-Pfads gegen einen echten Domain Controller | offen |
 | JEA-Endpunkt ansteuern (`deploy/windows/` liegt bereit) | offen |
@@ -396,14 +396,15 @@ am Ende von [docs/winrm.md](docs/winrm.md).
 
 ### Was als Nächstes sinnvoll ist
 
-**DHCP-CSV-Import** ist der letzte fehlende Teil der ursprünglichen
-Quellenliste. Die Audit-Dateien liegen als CSV auf dem Server; gebraucht wird
-ein Importer, der sie über dieselbe Strecke einliest — wahlweise per WinRM
-oder aus einer Freigabe.
+Die ursprüngliche Quellenliste ist damit vollständig: AD, DNS, DHCP und
+FortiGate liefern.
 
-**Ein Testlauf gegen einen echten DC** gehört vor die Inbetriebnahme, nicht
-danach — hier gab es kein Windows-System, siehe das Ende von
-[docs/winrm.md](docs/winrm.md).
+**Ein Testlauf gegen echte Windows-Server** gehört vor die Inbetriebnahme,
+nicht danach — hier gab es kein Windows-System. Besonders die DHCP-Strecke
+hängt an drei lokalisierten Details (Dateinamen, Datumsformat, ANSI-Codepage),
+die auf einer deutschen Installation anders aussehen als in der Dokumentation.
+Siehe das Ende von [docs/winrm.md](docs/winrm.md) und
+[docs/dhcp.md](docs/dhcp.md).
 
 ### Zwei bekannte Fallstricke
 

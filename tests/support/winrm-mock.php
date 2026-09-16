@@ -228,6 +228,69 @@ function state(string $dir, string $key): string
     return $dir . '/' . preg_replace('/[^A-Za-z0-9-]/', '', $key) . '.json';
 }
 
+/**
+ * Plays the part of the DHCP audit log: sends the column header once, then the
+ * rows whose timestamp falls inside the requested window, each wrapped the way
+ * the real script wraps them.
+ */
+function renderDhcp(string $script): string
+{
+    preg_match("/\\\$from = \[datetime\]::Parse\('([^']+)'/", $script, $mFrom);
+    preg_match("/\\\$to   = \[datetime\]::Parse\('([^']+)'/", $script, $mTo);
+    preg_match('/\\\$wanted = @\(([^)]*)\)/', $script, $mWanted);
+
+    $from   = strtotime($mFrom[1] ?? '@0');
+    $to     = strtotime($mTo[1] ?? 'now');
+    $wanted = [];
+
+    if (!empty($mWanted[1])) {
+        foreach (explode(',', $mWanted[1]) as $id) {
+            $wanted[] = trim($id, " '");
+        }
+    }
+
+    $file = dirname(__DIR__) . '/fixtures/dhcp-srvlog.log';
+    $out  = [];
+    $sent = 0;
+
+    foreach (file($file) ?: [] as $line) {
+        $line = rtrim($line, "\r\n");
+
+        if (preg_match('/^ID,\s*Date,\s*Time,/', $line) === 1) {
+            $out[] = json_encode(['h' => $line], JSON_UNESCAPED_SLASHES);
+            continue;
+        }
+
+        if (preg_match('/^\s*(\d{1,2}),\s*(\d{2})\/(\d{2})\/(\d{2}),\s*(\d{2}:\d{2}:\d{2}),/', $line, $m) !== 1) {
+            continue;
+        }
+
+        $id = str_pad($m[1], 2, '0', STR_PAD_LEFT);
+
+        if ($wanted !== [] && !in_array($id, $wanted, true)) {
+            continue;
+        }
+
+        // The fixture is written in the US short-date order the English
+        // install produces; the real script resolves this with the server's
+        // own culture, which is the whole point of doing it over there.
+        $ts = strtotime(sprintf('20%s-%s-%s %s UTC', $m[4], $m[2], $m[3], $m[5]));
+
+        if ($ts === false || $ts < $from || $ts >= $to) {
+            continue;
+        }
+
+        $out[] = json_encode([
+            'l' => $line,
+            't' => gmdate('Y-m-d\TH:i:s', $ts) . '.0000000Z',
+            'c' => 'DHCP01.corp.local',
+        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        $sent++;
+    }
+
+    return implode("\n", $out) . ($out === [] ? '' : "\n") . '##LW-COUNT:' . $sent . "\n";
+}
+
 function firstFixtureLine(): string
 {
     foreach (file(dirname(__DIR__) . '/fixtures/ad-security.ndjson') ?: [] as $line) {
@@ -263,6 +326,12 @@ function renderOutput(string $script, string $mode): string
     // The reachability probe asks for a record count, not for events.
     if (str_contains($script, '-ListLog')) {
         return "184529402\n";
+    }
+
+    // The DHCP collector reads a file, not a channel: same bounded window,
+    // completely different script, so the mock has to answer it differently.
+    if (str_contains($script, 'DhcpSrvLog') || str_contains($script, 'DhcpV6SrvLog')) {
+        return renderDhcp($script);
     }
 
     if (!str_contains($script, 'Get-WinEvent')) {

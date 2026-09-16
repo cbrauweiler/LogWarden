@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace LogWarden\Ingest\Windows;
 
 use LogWarden\Event\NormalizerInterface;
+use LogWarden\Ingest\Dhcp\DhcpCsvParser;
+use LogWarden\Ingest\Dhcp\DhcpNormalizer;
 use LogWarden\Ingest\IngestSource;
 
 /**
@@ -17,10 +19,18 @@ use LogWarden\Ingest\IngestSource;
  */
 final class WindowsNormalizerFactory
 {
-    public static function for(IngestSource $source): NormalizerInterface
+    public static function for(IngestSource $source, ?DhcpCsvParser $dhcpParser = null): NormalizerInterface
     {
         $host    = $source->targetHost ?? $source->name;
         $channel = $source->channel();
+
+        if ($source->collector === 'dhcp_csv') {
+            return new DhcpNormalizer(
+                $host,
+                $dhcpParser,
+                array_map('strval', $source->setting('event_ids', []) ?: []),
+            );
+        }
 
         if (DnsEventCatalog::isDnsChannel($channel)) {
             return new DnsNormalizer(

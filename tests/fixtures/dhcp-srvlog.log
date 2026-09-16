@@ -1,0 +1,37 @@
+		Microsoft DHCP Service Activity Log
+
+
+Event ID  Meaning
+00	The log was started.
+01	The log was stopped.
+02	The log was temporarily paused due to low disk space.
+10	A new IP address was leased to a client.
+11	A lease was renewed by a client.
+12	A lease was released by a client.
+13	An IP address was found to be in use on the network.
+14	A lease request could not be satisfied because the scope's address pool was exhausted.
+15	A lease was denied.
+16	A lease was deleted.
+17	A lease was expired and DNS records for an expired leases have not been deleted.
+18	A lease was expired and DNS records were deleted.
+20	A BOOTP address was leased to a client.
+24	IP address cleanup operation has began.
+25	IP address cleanup statistics.
+30	DNS update request to the named DNS server.
+31	DNS update failed.
+32	DNS update successful.
+50+	Codes above 50 are used for Rogue Server Detection information.
+
+ID,Date,Time,Description,IP Address,Host Name,MAC Address,User Name,TransactionID,QResult,Probationtime,CorrelationID,Dhcid,VendorClass(Hex),VendorClass(ASCII),UserClass(Hex),UserClass(ASCII),RelayAgentInformation,DnsRegError
+00,09/16/26,00:00:03,Started,,,,,0,0,,,,,,,,,0
+10,09/16/26,08:14:22,Assign,10.20.30.44,WS-ASMITH.corp.local,A0B1C2D3E4F5,,3529418752,0,,,,,,,,,0
+11,09/16/26,08:44:19,Renew,10.20.30.44,WS-ASMITH.corp.local,A0B1C2D3E4F5,,3529418799,0,,,,,,,,,0
+12,09/16/26,09:02:11,Release,10.20.30.61,NB-LWAGNER.corp.local,B4E1F0AA9911,,3529419001,0,,,,,,,,,0
+13,09/16/26,09:15:40,Conflict,10.20.30.80,,,,0,0,,,,,,,,,0
+14,09/16/26,09:31:02,Pool Exhausted,,,,,0,0,,,,,,,,,0
+15,09/16/26,09:33:55,Denied,10.20.30.99,ROGUE-PI,DEADBEEF0001,,3529419100,0,,,,,,,,,0
+31,09/16/26,09:40:12,DNS Update Failed,10.20.30.44,WS-ASMITH.corp.local,A0B1C2D3E4F5,,3529419200,0,,,,,,,,,9005
+54,09/16/26,09:45:00,Authorization failure stopped servicing,,,,,0,0,,,,,,,,,0
+62,09/16/26,09:46:11,Another DHCP server on the network,10.20.30.250,,,,0,0,,,,,,,,,0
+10,09/16/26,10:01:00,Assign,10.20.30.77,WS-PWEBER.corp.local,C8:1A:2B:3C:4D:5E,,3529419300,0,,,,,,,,,0
+99,09/16/26,10:05:00,Etwas ganz Neues,10.20.30.5,SOMEHOST,001122334455,,0,0,,,,,,,,,0

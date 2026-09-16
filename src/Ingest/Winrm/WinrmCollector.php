@@ -9,6 +9,7 @@ use DateTimeImmutable;
 use DateTimeZone;
 use LogWarden\Core\Logger;
 use LogWarden\Event\EventWriter;
+use LogWarden\Ingest\Dhcp\DhcpCsvParser;
 use LogWarden\Ingest\IngestSource;
 use LogWarden\Ingest\Windows\WindowsNormalizerFactory;
 
@@ -168,13 +169,7 @@ final class WinrmCollector
         for ($shrink = 0; ; $shrink++) {
             $to = $this->min($from->add(new DateInterval('PT' . $window . 'S')), $ceiling);
 
-            $query  = new EventLogQuery(
-                $source->channel(),
-                $source->eventIds(),
-                (bool) $source->setting('include_message', false),
-                $maxEvents,
-            );
-            $script = $query->script($from, $to);
+            $script = WindowsQueryFactory::script($source, $from, $to);
             $result = $shell->run('powershell.exe', EventLogQuery::powershellArguments($script));
 
             if ($result['exit_code'] !== 0) {
@@ -247,7 +242,12 @@ final class WinrmCollector
         bool $partial,
         array $bookmark,
     ): array {
-        $normalizer = WindowsNormalizerFactory::for($source);
+        // The DHCP log sends its own column header first, because the column
+        // count has changed between Windows versions and parsing by position
+        // against a fixed list would shift every field on the other one.
+        [$lines, $dhcpParser] = $this->extractHeader($lines);
+
+        $normalizer = WindowsNormalizerFactory::for($source, $dhcpParser);
 
         $before       = $this->writer->stats()['written'];
         $skipped      = 0;
@@ -284,6 +284,33 @@ final class WinrmCollector
             ],
             'note'     => $note,
         ];
+    }
+
+    /**
+     * Pulls the DHCP column header out of the stream, if there is one.
+     *
+     * @param list<string> $lines
+     * @return array{0: list<string>, 1: ?DhcpCsvParser}
+     */
+    private function extractHeader(array $lines): array
+    {
+        $parser = null;
+        $rest   = [];
+
+        foreach ($lines as $line) {
+            if ($parser === null && str_starts_with($line, '{"h":')) {
+                $record = json_decode($line, true);
+
+                if (is_array($record) && isset($record['h']) && is_string($record['h'])) {
+                    $parser = DhcpCsvParser::fromHeaderLine($record['h']);
+                    continue;
+                }
+            }
+
+            $rest[] = $line;
+        }
+
+        return [$rest, $parser];
     }
 
     /**
