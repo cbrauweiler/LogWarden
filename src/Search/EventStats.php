@@ -138,7 +138,11 @@ final class EventStats
     {
         return $this->db->fetchAll(
             "SELECT name, collector, source_type::text AS source_type, enabled,
-                    last_success_at, last_error, events_total
+                    last_success_at, last_error, events_total,
+                    -- Formatted here rather than in the template, the way every
+                    -- other timestamp on the dashboard is; the raw value used
+                    -- to reach the page as '2026-09-16 11:24:46.36718+00'.
+                    to_char(last_success_at, 'DD.MM. HH24:MI') AS last_success_label
                FROM ingest_sources
               ORDER BY enabled DESC, name"
         );

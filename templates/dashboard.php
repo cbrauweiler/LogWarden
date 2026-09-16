@@ -216,7 +216,7 @@ $badge = static function (?string $result) use ($e): string {
                                 <?php endif; ?>
                             </td>
                             <td><span class="badge badge--source"><?= $e($row['collector']) ?></span></td>
-                            <td class="nowrap muted"><?= $e($row['last_success_at'] ?? 'nie') ?></td>
+                            <td class="nowrap muted"><?= $e($row['last_success_label'] ?? 'nie') ?></td>
                             <td class="num"><?= $e($num((int) $row['events_total'])) ?></td>
                         </tr>
                     <?php endforeach; ?>

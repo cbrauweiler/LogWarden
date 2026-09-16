@@ -10,6 +10,26 @@ sind fertig und getestet. Siehe [Roadmap](#roadmap).
 
 ---
 
+## Oberfläche
+
+![Dashboard](docs/screenshots/dashboard.png)
+
+Offene Alerts zuerst, darunter Volumen nach Quelle, die Konten mit den meisten
+Fehlschlägen und der Zustand der Collector.
+
+![Suche](docs/screenshots/search.png)
+
+Jeder Filter steht im Query-String — eine Suche ist ein Link, den man in ein
+Ticket einfügen kann. Geblättert wird per Keyset, Seite 144 ist so schnell wie
+Seite 1.
+
+![Quellen](docs/screenshots/sources.png)
+
+Weitere Ansichten in [docs/screenshots/](docs/screenshots/): Alert-Detail,
+Benutzerverwaltung, Corporate Identity, Anmeldung — jeweils hell und dunkel.
+
+---
+
 ## Architekturentscheidungen
 
 ### PostgreSQL 16+ als einziger Datenspeicher
@@ -150,6 +170,12 @@ bin/logwarden-maintenance
 
 # 6. Erstes Administratorkonto (fragt das Passwort ohne Echo ab)
 bin/logwarden-user --create=admin --role=admin
+
+# 6b. Optional: einen Monat Demo-Daten, um die Oberfläche anzusehen,
+#     bevor die erste echte Quelle hängt
+bin/logwarden-seed-demo --yes
+bin/logwarden-rules                    # erzeugt die zugehörigen Alerts
+bin/logwarden-seed-demo --purge --yes  # rückstandsfrei wieder weg
 
 # 7. Dienste
 cp deploy/systemd/* /etc/systemd/system/

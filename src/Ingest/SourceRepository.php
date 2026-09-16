@@ -145,6 +145,7 @@ final class SourceRepository
         return $this->db->query(
             "SELECT s.id, s.name, s.collector, s.source_type::text AS source_type, s.target_host,
                     s.enabled, s.last_success_at, s.last_run_at, s.last_error, s.last_error_at,
+                    to_char(s.last_success_at, 'DD.MM. HH24:MI') AS last_success_label,
                     s.events_total, s.consecutive_failures, s.poll_interval_s,
                     s.config->>'channel' AS channel,
                     (SELECT count(*) FROM ingest_runs r
