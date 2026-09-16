@@ -1,0 +1,21 @@
+[Unit]
+Description=LogWarden WinRM collection (Windows event logs)
+After=postgresql.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=logwarden
+Group=logwarden
+WorkingDirectory=/opt/logwarden
+ExecStart=/usr/bin/php /opt/logwarden/bin/logwarden-winrm
+EnvironmentFile=-/etc/logwarden/env
+# Longer than the collector's own run budget (max_run_seconds, 240 s by
+# default) plus one operation timeout, so systemd never kills a run that is
+# still legitimately catching up.
+TimeoutStartSec=420
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/logwarden/var

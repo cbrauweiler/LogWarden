@@ -108,6 +108,26 @@ sonst würde derselbe Mensch in AD und FortiGate als zwei Konten erscheinen und
 die quellenübergreifenden Regeln liefen ins Leere. Die Originalform bleibt in
 `details.user_raw` erhalten.
 
+## Windows per WinRM
+
+`bin/logwarden-winrm`, auf einem Timer statt als Daemon: jede Quelle führt ihr
+eigenes Lesezeichen, ein verpasster Lauf kostet deshalb Aktualität und keine
+Abdeckung.
+
+Der Weg ist derselbe wie bei Syslog, nur mit einer Netzrunde davor:
+
+```
+WinRM-Shell → PowerShell auf dem DC → NDJSON → AdNormalizer → Event → EventWriter
+```
+
+Gefiltert wird auf dem Windows-Host. Nicht ausgewählte Event-IDs gehen gar
+nicht erst über das Netz, und der Meldungstext von Windows bleibt
+standardmäßig dort — LogWarden schreibt seine eigene Klartextzeile, weil
+Windows' Fassung zu 4624 rund 1,2 KB immer gleichen Erklärtext enthält.
+
+Abgefragt wird ein **Zeitraum**, nie eine Event-Anzahl. Die Begründung und die
+Windows-seitige Einrichtung stehen in [docs/winrm.md](winrm.md).
+
 ## Betrieb
 
 ```bash

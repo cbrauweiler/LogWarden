@@ -76,7 +76,24 @@ final class Event
             }
         }
 
-        return filter_var($value, FILTER_VALIDATE_IP) === false ? null : $value;
+        if (filter_var($value, FILTER_VALIDATE_IP) === false) {
+            return null;
+        }
+
+        // Windows logs IPv4 clients as IPv4-mapped IPv6 on dual-stack domain
+        // controllers: 4771 routinely carries ::ffff:10.0.0.5. PostgreSQL
+        // stores that happily, and then a search for 10.0.0.5 does not match
+        // it and a correlation against the FortiGate's plain IPv4 silently
+        // finds nothing. The two notations are the same host, so they are
+        // stored as the same address.
+        if (stripos($value, '::ffff:') === 0) {
+            $mapped = substr($value, 7);
+            if (filter_var($mapped, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false) {
+                return $mapped;
+            }
+        }
+
+        return $value;
     }
 
     public static function sanitiseText(string $value, int $maxBytes = 0): string

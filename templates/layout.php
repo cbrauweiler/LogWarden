@@ -26,6 +26,7 @@ $nav = array_values(array_filter([
 ], static fn (array $item): bool => $user !== null && $user->can($item['need'])));
 
 $adminNav = array_values(array_filter([
+    ['id' => 'sources',       'href' => '/settings/sources',       'label' => 'Quellen',            'icon' => 'plug',    'need' => Permission::SOURCE_MANAGE],
     ['id' => 'notifications', 'href' => '/settings/notifications', 'label' => 'Benachrichtigungen', 'icon' => 'send',    'need' => Permission::NOTIFY_MANAGE],
     ['id' => 'branding',      'href' => '/settings/branding',      'label' => 'Corporate Identity', 'icon' => 'palette', 'need' => Permission::BRANDING_MANAGE],
     ['id' => 'users',         'href' => '/settings/users',         'label' => 'Benutzer',           'icon' => 'users',   'need' => Permission::USER_MANAGE],

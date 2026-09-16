@@ -154,7 +154,9 @@ ausgeschlossen hast. Die Lücke ist damit bewusst in Kauf genommen, nicht
 ## Vorgeschlagene Reihenfolge
 
 1. **Audit-Kanal** über den WinRM-Collector (identischer Codeweg wie AD) —
-   sofort nützlich, praktisch gratis.
+   sofort nützlich, praktisch gratis. Der Collector steht;
+   `Microsoft-Windows-DNSServer/Audit` ist unter *Verwaltung → Quellen*
+   auswählbar. Offen ist nur die Ereignisliste, siehe den Kasten oben.
 2. **Server-Eventlog** mitnehmen — dieselbe Abfrage, anderer Kanal.
 3. **FortiGate-DNS-Filter** einschalten, falls vorhanden — kommt über die
    bestehende Syslog-Strecke herein.

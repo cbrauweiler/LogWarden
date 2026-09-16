@@ -54,6 +54,27 @@ return [
         'max_message_bytes' => 65535,
     ],
 
+    'winrm' => [
+        // Defaults for every WinRM source; each source may override them.
+        // HTTPS on 5986, because NTLM over plain HTTP hands the domain
+        // account's challenge-response to anyone on the path.
+        'tls'             => true,
+        'port'            => 5986,
+
+        // `winrm quickconfig` generates a self-signed certificate. Trusting it
+        // blindly means any host on the path can impersonate the domain
+        // controller, so verification stays on and the CA goes here — or you
+        // issue the host a certificate from your own CA, which is better.
+        'tls_verify'      => true,
+        'ca_file'         => null,
+
+        'connect_timeout' => 10,
+
+        // Must exceed the SOAP OperationTimeout: a Receive legitimately blocks
+        // on the host until output appears.
+        'read_timeout'    => 90,
+    ],
+
     'notify' => [
         // Outbound proxy for the Teams webhook, if the SOC network has one.
         // Example: 'http://proxy.corp.local:3128'

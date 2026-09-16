@@ -377,6 +377,8 @@ code, kbd, pre, .mono { font-family: var(--font-mono); font-size: 0.86em; }
 .badge--success .badge__dot { background: var(--status-good); }
 .badge--info    { color: var(--ink-2); background: var(--surface-raised); }
 .badge--info    .badge__dot { background: var(--ink-3); }
+.badge--warn    { color: var(--ink-1); background: color-mix(in srgb, var(--status-warning) 22%, transparent); }
+.badge--warn    .badge__dot { background: var(--status-warning); }
 .badge--source  { color: var(--ink-2); background: var(--surface-raised); font-family: var(--font-mono); font-size: 0.7rem; }
 
 /* --- Forms --------------------------------------------------------------- */
@@ -792,3 +794,52 @@ details.tableview > summary:hover { color: var(--ink-1); }
 @media (prefers-reduced-motion: reduce) {
     * { transition: none !important; animation: none !important; }
 }
+
+/* --- Forms: grouped fields and checkbox grids ---------------------------- */
+
+.fieldset {
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    padding: 0.9rem 1rem 1rem;
+    margin: 1.25rem 0 0;
+    /* A fieldset carries a UA `min-inline-size: min-content` that no amount of
+       width or flex settings overrides. Without this it refuses to shrink
+       below its widest child and pushes the whole page sideways on a phone. */
+    min-inline-size: 0;
+}
+
+.fieldset__legend {
+    font-size: 0.78rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+    color: var(--ink-2); padding: 0 0.4rem;
+}
+
+.fieldset__group {
+    font-size: 0.82rem; font-weight: 600; color: var(--ink-2);
+    margin: 1rem 0 0.4rem;
+}
+.fieldset__group:first-of-type { margin-top: 0.4rem; }
+
+.check {
+    display: inline-flex; align-items: flex-start; gap: 0.45rem;
+    font-size: 0.84rem; line-height: 1.45; cursor: pointer;
+}
+.check input { margin-top: 0.18rem; flex: none; accent-color: var(--brand); }
+.check code { font-size: 0.76rem; }
+.check .badge { margin-left: 0.3rem; vertical-align: baseline; }
+
+/* Wide enough for "Mitglied zu universeller Gruppe hinzugefügt" to stay on
+   one line at the usual window width; narrower columns wrapped every second
+   label and made the list hard to scan. */
+.checkgrid {
+    display: grid;
+    /* min() so the track collapses to the container on a narrow screen
+       instead of holding 21rem open and overflowing it. */
+    grid-template-columns: repeat(auto-fill, minmax(min(21rem, 100%), 1fr));
+    gap: 0.15rem 1.25rem;
+}
+
+.table--compact { font-size: 0.78rem; min-width: 0; }
+.table--compact th, .table--compact td { padding-top: 0.3rem; padding-bottom: 0.3rem; }
+
+details > summary { cursor: pointer; font-size: 0.82rem; padding: 0.2rem 0; }
+details > summary:hover { color: var(--ink-1); }

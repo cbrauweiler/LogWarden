@@ -27,6 +27,7 @@ use LogWarden\Security\LocalAuthProvider;
 use LogWarden\Security\Permission;
 use LogWarden\Security\Role;
 use LogWarden\Security\RoleResolver;
+use LogWarden\Ingest\SourceRepository;
 use LogWarden\Security\SecretBox;
 use LogWarden\Security\SessionStore;
 use LogWarden\Web\Branding;
@@ -36,6 +37,7 @@ use LogWarden\Web\Controller\AuthController;
 use LogWarden\Web\Controller\BrandingController;
 use LogWarden\Web\Controller\DashboardController;
 use LogWarden\Web\Controller\NotificationController;
+use LogWarden\Web\Controller\SourceController;
 use LogWarden\Web\Controller\ProfileController;
 use LogWarden\Web\Controller\SearchController;
 use LogWarden\Web\Controller\UserAdminController;
@@ -143,6 +145,7 @@ $routePermissions = [
     '/settings/branding'        => Permission::BRANDING_MANAGE,
     '/settings/notifications'   => Permission::NOTIFY_MANAGE,
     '/settings/users'           => Permission::USER_MANAGE,
+    '/settings/sources'         => Permission::SOURCE_MANAGE,
 ];
 
 $router->get('/login',  fn (): Response => $authController->showLogin());
@@ -221,6 +224,21 @@ if ($currentUser !== null) {
             isset($_GET['routing']) ? 'Zuordnung gespeichert.' : null,
         ])));
         $router->post('/settings/notifications', fn (): Response => $notifications->save());
+
+        $sourcesC = new SourceController(
+            $db,
+            new SourceRepository($db),
+            $secrets,
+            $config,
+            $logger,
+            $view,
+            $currentUser->username,
+        );
+
+        $router->get('/settings/sources', fn (): Response => isset($_GET['edit'])
+            ? $sourcesC->edit((int) $_GET['edit'])
+            : $sourcesC->show());
+        $router->post('/settings/sources', fn (): Response => $sourcesC->save());
     } catch (Throwable $e) {
         $secretError = $e->getMessage();
         $logger->warning('Secret store unavailable; notification settings disabled', ['error' => $secretError]);
@@ -237,6 +255,11 @@ if ($currentUser !== null) {
 
         $router->get('/settings/notifications', $notificationsUnavailable);
         $router->post('/settings/notifications', $notificationsUnavailable);
+
+        // The source page stores the collection password in the same vault,
+        // so it shares the fate of the key file rather than pretending to work.
+        $router->get('/settings/sources', $notificationsUnavailable);
+        $router->post('/settings/sources', $notificationsUnavailable);
     }
 }
 

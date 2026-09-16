@@ -1,0 +1,281 @@
+#!/usr/bin/env php
+<?php
+/**
+ * Pulls Windows event logs over WinRM.
+ *
+ * Usage: bin/logwarden-winrm [--config=PATH] [--source=NAME] [--dry-run]
+ *                            [--list] [--test=NAME] [--reset=NAME] [--force]
+ *
+ * Run it on a timer. Each source keeps its own bookmark, so a missed run costs
+ * timeliness rather than coverage: the next run collects the window that was
+ * skipped.
+ */
+
+declare(strict_types=1);
+
+require dirname(__DIR__) . '/src/bootstrap.php';
+
+use LogWarden\Core\Config;
+use LogWarden\Core\Db;
+use LogWarden\Core\Logger;
+use LogWarden\Event\EventWriter;
+use LogWarden\Ingest\IngestSource;
+use LogWarden\Ingest\SourceRepository;
+use LogWarden\Ingest\Winrm\WinrmClient;
+use LogWarden\Ingest\Winrm\WinrmCollector;
+use LogWarden\Security\SecretBox;
+
+$options = getopt('', ['config::', 'source::', 'dry-run', 'list', 'test::', 'reset::', 'force', 'help']);
+
+if (isset($options['help'])) {
+    fwrite(STDOUT, <<<TXT
+    Usage: logwarden-winrm [options]
+
+      --config=PATH   alternative configuration file
+      --source=NAME   collect only this source
+      --dry-run       collect and report, write no events and no bookmark
+      --list          show all WinRM sources with their health
+      --test=NAME     check reachability and credentials, collect nothing
+      --reset=NAME    clear the bookmark so the next run starts over
+      --force         ignore poll_interval_s and run now
+
+    TXT);
+    exit(0);
+}
+
+try {
+    $config = Config::load(is_string($options['config'] ?? null) ? $options['config'] : null);
+    $logger = Logger::fromConfig($config, 'winrm');
+    $db     = Db::fromConfig($config, $logger);
+    $sources = new SourceRepository($db);
+
+    if (!extension_loaded('curl')) {
+        fwrite(STDERR, "logwarden-winrm: ext-curl wird benötigt\n");
+        exit(1);
+    }
+
+    // --- list --------------------------------------------------------------
+    if (isset($options['list'])) {
+        $rows = $sources->health();
+        if ($rows === []) {
+            fwrite(STDOUT, "Keine Quellen konfiguriert.\n");
+            exit(0);
+        }
+
+        fwrite(STDOUT, sprintf(
+            "%-24s %-10s %-22s %-8s %-20s %s\n",
+            'NAME', 'TYP', 'KANAL', 'STATUS', 'LETZTER ERFOLG', 'EVENTS/24H',
+        ));
+
+        foreach ($rows as $row) {
+            fwrite(STDOUT, sprintf(
+                "%-24s %-10s %-22s %-8s %-20s %s\n",
+                mb_strimwidth((string) $row['name'], 0, 24),
+                $row['source_type'],
+                mb_strimwidth((string) ($row['channel'] ?? '-'), 0, 22),
+                $row['enabled'] ? ($row['last_error'] ? 'FEHLER' : 'aktiv') : 'aus',
+                $row['last_success_at'] ? substr((string) $row['last_success_at'], 0, 19) : 'nie',
+                $row['stored_24h'],
+            ));
+
+            if ($row['last_error']) {
+                fwrite(STDOUT, sprintf("  └ %s\n", mb_strimwidth((string) $row['last_error'], 0, 110)));
+            }
+        }
+        exit(0);
+    }
+
+    // --- reset -------------------------------------------------------------
+    if (is_string($options['reset'] ?? null) && $options['reset'] !== '') {
+        $source = $sources->findByName($options['reset']);
+        if ($source === null) {
+            fwrite(STDERR, "Unbekannte Quelle: {$options['reset']}\n");
+            exit(1);
+        }
+        $sources->resetBookmark($source->id);
+        fwrite(STDOUT, "Lesezeichen von {$source->name} zurückgesetzt.\n");
+        exit(0);
+    }
+
+    $secrets = SecretBox::open((string) $config->require('secret_key_file'), $db);
+
+    $clientFactory = static function (IngestSource $source) use ($secrets, $config, $logger): WinrmClient {
+        if ($source->targetHost === null || $source->username === null) {
+            throw new RuntimeException('Quelle ' . $source->name . ' hat keinen Host oder kein Konto');
+        }
+
+        $password = $source->secretRef === null ? null : $secrets->get($source->secretRef);
+        if ($password === null) {
+            throw new RuntimeException(
+                'Für ' . $source->name . ' ist kein Passwort hinterlegt. '
+                . 'Setzen mit: bin/logwarden-winrm --source=' . $source->name . ' … bzw. über die Oberfläche.',
+            );
+        }
+
+        $defaults = $config->section('winrm');
+
+        return new WinrmClient(
+            $source->targetHost,
+            $source->username,
+            $password,
+            [
+                'auth'            => $source->authMode,
+                'tls'             => (bool) $source->setting('tls', $defaults['tls'] ?? true),
+                'port'            => $source->setting('port', $defaults['port'] ?? null),
+                'tls_verify'      => (bool) $source->setting('tls_verify', $defaults['tls_verify'] ?? true),
+                'ca_file'         => $source->setting('ca_file', $defaults['ca_file'] ?? null),
+                'connect_timeout' => (int) ($defaults['connect_timeout'] ?? 10),
+                'read_timeout'    => (int) ($defaults['read_timeout'] ?? 90),
+            ],
+            $logger,
+        );
+    };
+
+    // --- test --------------------------------------------------------------
+    if (is_string($options['test'] ?? null) && $options['test'] !== '') {
+        $source = $sources->findByName($options['test']);
+        if ($source === null) {
+            fwrite(STDERR, "Unbekannte Quelle: {$options['test']}\n");
+            exit(1);
+        }
+
+        $client = $clientFactory($source);
+        fwrite(STDOUT, "Endpunkt: {$client->endpoint()}\n");
+
+        $identity = $client->identify();
+        fwrite(STDOUT, sprintf(
+            "WS-Management erreichbar: %s, Protokoll %s\n",
+            $identity['vendor'] ?? 'unbekannt',
+            $identity['version'] ?? 'unbekannt',
+        ));
+
+        $shell = new LogWarden\Ingest\Winrm\WinrmShell($client, $logger);
+        $probe = $shell->run('powershell.exe', LogWarden\Ingest\Winrm\EventLogQuery::powershellArguments(
+            '(Get-WinEvent -ListLog ' . var_export($source->channel(), true)
+            . ' -ErrorAction Stop | Select-Object -First 1).RecordCount',
+        ));
+
+        if ($probe['exit_code'] !== 0) {
+            fwrite(STDERR, "Kanal nicht lesbar: " . trim($probe['stderr']) . "\n");
+            exit(1);
+        }
+
+        fwrite(STDOUT, sprintf(
+            "Kanal %s lesbar, %s Einträge vorhanden.\n",
+            $source->channel(),
+            trim($probe['stdout']) === '' ? '?' : trim($probe['stdout']),
+        ));
+        exit(0);
+    }
+
+    // --- collect -----------------------------------------------------------
+    $dryRun = isset($options['dry-run']);
+    $force  = isset($options['force']);
+    $only   = is_string($options['source'] ?? null) && $options['source'] !== '' ? $options['source'] : null;
+
+    $writer = new EventWriter(
+        $db,
+        $logger,
+        (int) ($config->section('ingest')['batch_size'] ?? 500),
+        1.0,
+        $config->section('ingest')['spool_dir'] ?? null,
+    );
+
+    $collector = new WinrmCollector($writer, $logger);
+    $now       = new DateTimeImmutable('now', new DateTimeZone('UTC'));
+    $failures  = 0;
+    $ran       = 0;
+
+    foreach ($sources->all('winrm') as $source) {
+        if ($only !== null && $source->name !== $only) {
+            continue;
+        }
+
+        if ($only === null && !$force && !$source->isDue($now)) {
+            continue;
+        }
+
+        if (!$source->enabled && $only === null) {
+            continue;
+        }
+
+        $started = microtime(true);
+        $ran++;
+
+        try {
+            $result   = $collector->collect($source, $clientFactory, $now);
+            $duration = (int) round((microtime(true) - $started) * 1000);
+
+            if ($dryRun) {
+                fwrite(STDOUT, sprintf(
+                    "%-24s %s: %d gelesen, %d gespeichert, %d übersprungen, %d Fenster%s (%d ms)%s\n",
+                    $source->name,
+                    $result['status'],
+                    $result['fetched'],
+                    $result['stored'],
+                    $result['skipped'],
+                    $result['windows'],
+                    $result['caught_up'] ? '' : ', noch im Rückstand',
+                    $duration,
+                    $result['note'] === null ? '' : "\n  └ " . $result['note'],
+                ));
+                continue;
+            }
+
+            $sources->recordSuccess(
+                $source,
+                $result['bookmark'],
+                $result['fetched'],
+                $result['stored'],
+                $result['skipped'],
+                $duration,
+            );
+
+            $logger->info('Quelle abgerufen', [
+                'source'    => $source->name,
+                'status'    => $result['status'],
+                'fetched'   => $result['fetched'],
+                'stored'    => $result['stored'],
+                'skipped'   => $result['skipped'],
+                'windows'   => $result['windows'],
+                'caught_up' => $result['caught_up'],
+                'ms'        => $duration,
+            ]);
+
+            if ($result['note'] !== null) {
+                $logger->warning('Unvollständiger Abruf', [
+                    'source' => $source->name,
+                    'note'   => $result['note'],
+                ]);
+            }
+        } catch (Throwable $e) {
+            $failures++;
+            $duration = (int) round((microtime(true) - $started) * 1000);
+
+            if (!$dryRun) {
+                $sources->recordFailure($source, $e->getMessage(), $duration);
+            }
+
+            $logger->error('Abruf fehlgeschlagen', [
+                'source' => $source->name,
+                'error'  => $e->getMessage(),
+            ]);
+
+            if ($dryRun) {
+                fwrite(STDERR, sprintf("%-24s FEHLER: %s\n", $source->name, $e->getMessage()));
+            }
+        }
+    }
+
+    if ($ran === 0 && $only !== null) {
+        fwrite(STDERR, "Unbekannte oder nicht fällige Quelle: {$only}\n");
+        exit(1);
+    }
+
+    // Non-zero so a partially failed run shows red in systemctl rather than
+    // only in the log.
+    exit($failures > 0 ? 1 : 0);
+} catch (Throwable $e) {
+    fwrite(STDERR, 'logwarden-winrm: ' . $e->getMessage() . "\n");
+    exit(1);
+}

@@ -1,0 +1,27 @@
+# JEA-Sitzungskonfiguration für LogWarden.
+#
+#   Register-PSSessionConfiguration -Name 'LogWarden' -Path .\logwarden-jea.pssc -Force
+#
+# RunAsVirtualAccount: die Sitzung läuft unter einem temporären virtuellen
+# Konto des Rechners, nicht unter dem angemeldeten Dienstkonto. Das
+# Dienstkonto braucht dadurch auf dem Zielsystem selbst keinerlei Rechte —
+# es muss sich nur an diesem Endpunkt anmelden dürfen.
+
+@{
+    SchemaVersion        = '2.0.0.0'
+    GUID                 = 'c1d94b7a-2e58-4a6f-b0d3-9f5e18c72a44'
+    Author               = 'LogWarden'
+    Description          = 'Log-Abholung für LogWarden, nur lesend'
+
+    SessionType          = 'RestrictedRemoteServer'
+    RunAsVirtualAccount  = $true
+    TranscriptDirectory  = 'C:\ProgramData\LogWarden\Transcripts'
+
+    # Das virtuelle Konto bekommt Leserechte auf die Protokolle; die
+    # Mitgliedschaft ersetzt die Gruppenzuweisung des Dienstkontos.
+    RunAsVirtualAccountGroups = @('Event Log Readers')
+
+    RoleDefinitions      = @{
+        'CORP\svc-logwarden' = @{ RoleCapabilities = 'LogWarden' }
+    }
+}

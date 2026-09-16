@@ -202,6 +202,38 @@ try {
         }
     }
 
+    // --- bookkeeping tables ------------------------------------------------
+    // These are not partitioned and nothing else ever removes a row, so
+    // without this they grow for the life of the installation. The retention
+    // is fixed rather than configurable: they answer "what happened in the
+    // last few weeks", and nothing asks them anything older.
+    if (!$dryRun) {
+        foreach ([
+            'ingest_runs'    => ['started_at', 30],
+            'login_attempts' => ['ts', 90],
+            'notification_log' => ['sent_at', 90],
+        ] as $table => [$column, $keepDays]) {
+            try {
+                $removed = $db->execute(sprintf(
+                    'DELETE FROM %s WHERE %s < now() - make_interval(days => ?)',
+                    $table,
+                    $column,
+                ), [$keepDays]);
+
+                if ($removed > 0) {
+                    $logger->info('Housekeeping rows removed', [
+                        'table' => $table,
+                        'rows'  => $removed,
+                        'keep_days' => $keepDays,
+                    ]);
+                }
+            } catch (Throwable $e) {
+                $failures++;
+                $logger->error('Housekeeping failed', ['table' => $table, 'error' => $e->getMessage()]);
+            }
+        }
+    }
+
     if ($failures > 0) {
         $logger->warning('Maintenance finished with errors', ['failures' => $failures]);
     }

@@ -4,9 +4,9 @@ Selbstgehostetes, SIEM-ähnliches Werkzeug zur Sammlung, Normalisierung, Suche
 und Alarmierung von Security-Logs aus einer gemischten Windows-/Fortinet-
 Infrastruktur. Kein Agent auf den Zielsystemen.
 
-**Stand:** Fundament, FortiGate-Syslog-Ingestion, Suche, Rule-Engine,
-Teams-Benachrichtigung und die Anmeldung sind fertig und getestet.
-Siehe [Roadmap](#roadmap).
+**Stand:** Fundament, FortiGate-Syslog-Ingestion, der WinRM-Collector für
+Windows-Logs, Suche, Rule-Engine, Teams-Benachrichtigung und die Anmeldung
+sind fertig und getestet. Siehe [Roadmap](#roadmap).
 
 ---
 
@@ -84,6 +84,25 @@ berechnet LogWarden nach WCAG die Schriftfarbe für Buttons und dunkelt die Farb
 für Fließtext ab, bis sie 4,5:1 erreicht. Die Einstellungsseite zeigt die
 Kontrastwerte an.
 
+### Windows-Logs per WinRM
+
+Kein Agent auf den Domain Controllern: LogWarden holt die Ereignisprotokolle
+über WinRM ab und filtert dabei schon auf dem Windows-Host, sodass nicht
+ausgewählte Ereignisse gar nicht erst über das Netz gehen.
+
+Abgefragt wird immer ein **Zeitraum**, nie „die nächsten N Events". Der
+naheliegende Weg ist auf Windows unauffällig falsch: `Get-WinEvent` liefert die
+neuesten zuerst, `-MaxEvents` wählt also die neuesten N Treffer. Ein Collector
+mit Rückstand bekäme die neuesten und übersprünge die dazwischen — dauerhaft
+und ohne Fehlermeldung. Über ein Zeitfenster ist Vollständigkeit dagegen
+prüfbar: entweder der Zeitraum kam unter der Obergrenze zurück, oder das
+Fenster wird halbiert und erneut versucht.
+
+Welche Ereignisse mitgenommen werden, ist eine Volumen- und keine
+Übersetzungsfrage: 4769 allein kann 80 % des Kanals eines DCs ausmachen und
+beantwortet keine Frage, während 4740 und 4728 ein paar Mal pro Woche
+vorkommen und jedes Mal zählen. Details in [docs/winrm.md](docs/winrm.md).
+
 ### Anmeldung und Rollen
 
 Zwei Wege hinein: **LDAP/AD-Bind** gegen einen Domain Controller und, davon
@@ -110,6 +129,7 @@ quittieren. Details in [docs/auth.md](docs/auth.md).
 # 1. Abhängigkeiten (Debian/Ubuntu)
 apt install php8.4-cli php8.4-fpm php8.4-pgsql php8.4-curl php8.4-mbstring \
             php8.4-xml php8.4-ldap postgresql-16 nginx
+# php8.4-curl wird auch für den WinRM-Collector gebraucht (NTLM/Kerberos)
 # php8.4-ldap wird für die AD-Anmeldung gebraucht; ohne die Erweiterung
 # funktionieren nur lokale Konten.
 
@@ -135,7 +155,7 @@ bin/logwarden-user --create=admin --role=admin
 cp deploy/systemd/* /etc/systemd/system/
 systemctl enable --now logwarden-syslogd logwarden-rules.timer \
                        logwarden-notify.timer logwarden-maintenance.timer \
-                       logwarden-spool-replay.timer
+                       logwarden-spool-replay.timer logwarden-winrm.timer
 ```
 
 `composer install` ist optional — ohne Composer greift ein eingebauter
@@ -201,7 +221,7 @@ src/
   Core/       Config, Db, Logger
   Security/   Anmeldung, Rollen, Sessions, SecretBox (libsodium)
   Event/      Event-DTO, Batch-Writer, Normalizer-Contract
-  Ingest/     Syslog/, Fortigate/, Winrm/, Dhcp/
+  Ingest/     Syslog/, Fortigate/, Winrm/, Windows/, Dhcp/
   Rules/      Regel-Interface, Registry, Engine und eingebaute Regeln
   Alerting/   Alert-Persistenz und Abfragen
   Notify/     Teams-Webhook
@@ -209,7 +229,7 @@ src/
   Web/        Router, Controller, Branding, Farbmathematik, Charts
 public/       Einziger DocumentRoot
 templates/    PHP-Templates
-deploy/       systemd-Units, nginx-Beispiel, Windows-Hinweise
+deploy/       systemd-Units, nginx-Beispiel, windows/ (JEA-Konfiguration)
 tests/        Unit-Tests und FortiGate-Fixtures
 ```
 
@@ -222,6 +242,28 @@ echo 'https://prod-01.westeurope.logic.azure.com/workflows/…' \
 bin/logwarden-notify --test=1          # Testkarte senden
 bin/logwarden-notify --list-channels   # Status aller Kanäle
 bin/logwarden-notify --dry-run
+```
+
+## Windows-Quellen anbinden
+
+Auf dem Domain Controller einen HTTPS-Listener und ein nur lesendes
+Sammelkonto einrichten — die vollständige Anleitung samt Kanalrechten und
+Überwachungsrichtlinien steht in [docs/winrm.md](docs/winrm.md):
+
+```powershell
+winrm enumerate winrm/config/listener                       # was ist da?
+Add-LocalGroupMember -Group 'Remote Management Users' -Member 'CORP\svc-logwarden'
+Add-LocalGroupMember -Group 'Event Log Readers'      -Member 'CORP\svc-logwarden'
+```
+
+Danach unter *Verwaltung → Quellen* anlegen und **Test** drücken. Der Test
+prüft Erreichbarkeit, Anmeldedaten und Kanalzugriff getrennt, weil dahinter
+drei verschiedene Ursachen mit drei verschiedenen Lösungen stecken.
+
+```bash
+bin/logwarden-winrm --list                    # Zustand aller Quellen
+bin/logwarden-winrm --test='DC01 Sicherheit'
+bin/logwarden-winrm --dry-run                 # abrufen, nichts schreiben
 ```
 
 ## Benutzer und Zuordnungen
@@ -255,7 +297,16 @@ LW_TEST_DSN='host=/var/run/postgresql;dbname=logwarden_test;user=logwarden;passw
 # Zusätzlich gegen ein echtes Verzeichnis (sonst werden die LDAP-Tests
 # übersprungen; erwartet wird die Testdomäne aus tests/Unit/AuthTest.php)
 LW_TEST_LDAP='ldap://127.0.0.1:389' php tests/run.php
+
+# WinRM-Protokolltests gegen den mitgelieferten Mock-Endpunkt
+php tests/support/winrm-mock.php --listen=127.0.0.1:5985 --ntlm &
+LW_TEST_WINRM='127.0.0.1:5985' php tests/run.php
 ```
+
+Der Mock spricht die MS-WSMV-Shell-Konversation wirklich — inklusive
+NTLM-Handshake, Verbindungswiederverwendung und mehrteiliger Base64-Ströme.
+Er ersetzt keinen Domain Controller; was damit **nicht** geprüft ist, steht
+am Ende von [docs/winrm.md](docs/winrm.md).
 
 ## Roadmap
 
@@ -270,9 +321,10 @@ LW_TEST_LDAP='ldap://127.0.0.1:389' php tests/run.php
 | Such- und Filteransicht, Event-Detailansicht ([Doku](docs/search.md)) | fertig |
 | Teams-Benachrichtigung ([Doku](docs/notifications.md)) | fertig |
 | Anmeldung, Rollen und Benutzerverwaltung ([Doku](docs/auth.md)) | fertig |
-| WinRM-Pull für AD | offen |
+| WinRM-Collector für AD-Sicherheitsereignisse ([Doku](docs/winrm.md)) | fertig |
+| DNS: Audit-Kanal über denselben Collector ([Strategie](docs/dns.md)) | offen |
 | DHCP-CSV-Import | offen |
-| DNS: Audit-Kanal, danach optional Analytic-Verdichtung ([Strategie](docs/dns.md)) | offen |
+| DNS: optionale Analytic-Verdichtung ([Strategie](docs/dns.md)) | offen |
 
 ### Zwei bekannte Fallstricke
 
@@ -283,7 +335,12 @@ Abfrage, auf einem produktiven DC 2.000–10.000 Events/s, und wird ausschließl
 verdichtet auf dem DC selbst erfasst, nicht roh. Die Begründung und die
 konkreten Filter stehen in [docs/dns.md](docs/dns.md).
 
-**WinRM in reinem PHP** ist WS-Management-SOAP über HTTPS, machbar mit
-`ext-curl` und `CURLAUTH_NTLM`. Kerberos setzt ein curl mit GSSAPI-Support
-voraus, das nicht überall vorhanden ist. Plan B ist WEF-Push auf einen
-Windows-Collector, dessen `ForwardedEvents` LogWarden ausliest.
+**WinRM in reinem PHP** ist WS-Management-SOAP über HTTPS mit `ext-curl` und
+`CURLAUTH_NTLM`. Der Fallstrick dabei: NTLM authentifiziert die
+*TCP-Verbindung*, nicht die Anfrage. Ein frisches curl-Handle je SOAP-Aufruf
+würde den Dreiwegehandshake für jedes Receive wiederholen — und in genau dem
+Protokoll, das gerade abgeholt wird, eine Spur aus 4624/4634-Paaren
+hinterlassen. Das Handle lebt deshalb so lange wie die Shell.
+
+Kerberos setzt ein curl mit GSSAPI-Support voraus; ob es vorhanden ist, zeigt
+`php -r 'var_dump((bool)(curl_version()["features"] & CURL_VERSION_GSSAPI));'`.

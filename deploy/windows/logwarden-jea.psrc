@@ -1,0 +1,42 @@
+# JEA-Rollenbeschreibung für das LogWarden-Sammelkonto.
+#
+# Erlaubt genau ein Cmdlet: Get-WinEvent. Kein Dateisystem, keine Registry,
+# keine Sprachkonstrukte — eine kompromittierte LogWarden-Installation kann
+# damit Protokolle lesen und sonst nichts.
+#
+# Ablage:
+#   C:\Program Files\WindowsPowerShell\Modules\LogWardenJEA\RoleCapabilities\LogWarden.psrc
+
+@{
+    GUID              = '8f3a1c62-5d47-4f9e-9b21-7c4e0a6d3f18'
+    Author            = 'LogWarden'
+    Description       = 'Nur lesender Zugriff auf Windows-Ereignisprotokolle'
+    CompanyName       = ''
+
+    # NoLanguage verhindert, dass über die Sitzung beliebiger PowerShell-Code
+    # ausgeführt wird. Nur die unten aufgeführten Cmdlets sind erreichbar.
+    VisibleCmdlets    = @(
+        @{
+            Name       = 'Get-WinEvent'
+            Parameters = @(
+                @{ Name = 'FilterHashtable' },
+                @{ Name = 'LogName' },
+                @{ Name = 'MaxEvents' },
+                @{ Name = 'ListLog' },
+                @{ Name = 'Oldest' },
+                @{ Name = 'ErrorAction' },
+                @{ Name = 'ErrorVariable' }
+            )
+        },
+        # Wird für die Ausgabe als NDJSON gebraucht.
+        @{ Name = 'ConvertTo-Json' },
+        @{ Name = 'Sort-Object' },
+        @{ Name = 'Select-Object' },
+        @{ Name = 'ForEach-Object' },
+        @{ Name = 'Write-Output' }
+    )
+
+    VisibleFunctions  = @()
+    VisibleExternalCommands = @()
+    VisibleAliases    = @()
+}

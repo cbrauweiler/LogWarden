@@ -1,0 +1,26 @@
+# Feldnamen und -inhalte entsprechen dem, was Get-WinEvent auf einem
+# Windows-Server-2022-DC liefert (Event.EventData.Data, Name-Attribute).
+# Erfolgreiche interaktive Anmeldung
+{"r":184529301,"t":"2026-09-16T07:12:44.1234567Z","i":4624,"p":"Microsoft-Windows-Security-Auditing","c":"DC01.corp.local","l":"Informationen","d":{"SubjectUserSid":"S-1-0-0","SubjectUserName":"-","SubjectDomainName":"-","SubjectLogonId":"0x0","TargetUserSid":"S-1-5-21-1004336348-1177238915-682003330-1109","TargetUserName":"asmith","TargetDomainName":"CORP","TargetLogonId":"0x3e9f21","LogonType":"10","LogonProcessName":"User32","AuthenticationPackageName":"Negotiate","WorkstationName":"WS-ASMITH","LogonGuid":"{00000000-0000-0000-0000-000000000000}","ProcessName":"C:\\Windows\\System32\\svchost.exe","IpAddress":"10.20.30.44","IpPort":"51221"}}
+# Fehlgeschlagene Anmeldung, falsches Passwort, Netzwerk
+{"r":184529302,"t":"2026-09-16T07:13:02.7654321Z","i":4625,"p":"Microsoft-Windows-Security-Auditing","c":"DC01.corp.local","l":"Informationen","d":{"SubjectUserSid":"S-1-0-0","SubjectUserName":"-","SubjectDomainName":"-","SubjectLogonId":"0x0","TargetUserSid":"S-1-0-0","TargetUserName":"pweber","TargetDomainName":"CORP","Status":"0xc000006d","FailureReason":"%%2313","SubStatus":"0xc000006a","LogonType":"3","LogonProcessName":"NtLmSsp ","AuthenticationPackageName":"NTLM","WorkstationName":"WS-PWEBER","ProcessName":"-","IpAddress":"10.20.30.77","IpPort":"49812"}}
+# Fehlgeschlagene Anmeldung, Konto existiert nicht
+{"r":184529303,"t":"2026-09-16T07:13:09.0010000Z","i":4625,"p":"Microsoft-Windows-Security-Auditing","c":"DC01.corp.local","l":"Informationen","d":{"TargetUserName":"administrat0r","TargetDomainName":"CORP","Status":"0xc000006d","SubStatus":"0xc0000064","LogonType":"3","AuthenticationPackageName":"NTLM","WorkstationName":"-","IpAddress":"198.51.100.23","IpPort":"55001"}}
+# Konto gesperrt — TargetDomainName trägt hier den auslösenden Rechner, nicht die Domäne
+{"r":184529310,"t":"2026-09-16T07:15:00.5000000Z","i":4740,"p":"Microsoft-Windows-Security-Auditing","c":"DC01.corp.local","l":"Informationen","d":{"TargetUserName":"pweber","TargetDomainName":"WS-PWEBER","TargetSid":"S-1-5-21-1004336348-1177238915-682003330-1131","SubjectUserSid":"S-1-5-18","SubjectUserName":"DC01$","SubjectDomainName":"CORP","SubjectLogonId":"0x3e7"}}
+# Kerberos Pre-Auth fehlgeschlagen, IPv4-mapped IPv6
+{"r":184529320,"t":"2026-09-16T07:16:41.2220000Z","i":4771,"p":"Microsoft-Windows-Security-Auditing","c":"DC01.corp.local","l":"Informationen","d":{"TargetUserName":"jdoe","TargetSid":"S-1-5-21-1004336348-1177238915-682003330-1105","ServiceName":"krbtgt/CORP.LOCAL","TicketOptions":"0x40810010","Status":"0x18","PreAuthType":"2","IpAddress":"::ffff:10.20.30.91","IpPort":"0"}}
+# NTLM-Prüfung: Feld heißt hier "Workstation", nicht "WorkstationName"
+{"r":184529321,"t":"2026-09-16T07:16:55.0000000Z","i":4776,"p":"Microsoft-Windows-Security-Auditing","c":"DC01.corp.local","l":"Informationen","d":{"PackageName":"MICROSOFT_AUTHENTICATION_PACKAGE_V1_0","TargetUserName":"pweber","Workstation":"WS-PWEBER","Status":"0xc000006a"}}
+# Mitglied zu Domänen-Admins hinzugefügt
+{"r":184529330,"t":"2026-09-16T07:20:13.9990000Z","i":4728,"p":"Microsoft-Windows-Security-Auditing","c":"DC01.corp.local","l":"Informationen","d":{"MemberName":"CN=Peter Weber,OU=Benutzer,DC=corp,DC=local","MemberSid":"S-1-5-21-1004336348-1177238915-682003330-1131","TargetUserName":"Domänen-Admins","TargetDomainName":"CORP","TargetSid":"S-1-5-21-1004336348-1177238915-682003330-512","SubjectUserSid":"S-1-5-21-1004336348-1177238915-682003330-500","SubjectUserName":"Administrator","SubjectDomainName":"CORP","SubjectLogonId":"0x4a12f","PrivilegeList":"-"}}
+# Sonderrechte bei Anmeldung
+{"r":184529331,"t":"2026-09-16T07:20:14.1000000Z","i":4672,"p":"Microsoft-Windows-Security-Auditing","c":"DC01.corp.local","l":"Informationen","d":{"SubjectUserSid":"S-1-5-21-1004336348-1177238915-682003330-500","SubjectUserName":"Administrator","SubjectDomainName":"CORP","SubjectLogonId":"0x4a12f","PrivilegeList":"SeSecurityPrivilege SeBackupPrivilege SeRestorePrivilege SeDebugPrivilege"}}
+# Sicherheitsprotokoll gelöscht — Felder liegen unter UserData
+{"r":1,"t":"2026-09-16T07:30:00.0000000Z","i":1102,"p":"Microsoft-Windows-Eventlog","c":"DC01.corp.local","l":"Informationen","d":{"SubjectUserSid":"S-1-5-21-1004336348-1177238915-682003330-500","SubjectUserName":"Administrator","SubjectDomainName":"CORP","SubjectLogonId":"0x4a12f"}}
+# Maschinenkonto — wird standardmäßig verworfen
+{"r":184529400,"t":"2026-09-16T07:31:00.0000000Z","i":4624,"p":"Microsoft-Windows-Security-Auditing","c":"DC01.corp.local","l":"Informationen","d":{"TargetUserName":"WS-ASMITH$","TargetDomainName":"CORP","LogonType":"3","IpAddress":"10.20.30.44"}}
+# ANONYMOUS LOGON — wird standardmäßig verworfen
+{"r":184529401,"t":"2026-09-16T07:31:05.0000000Z","i":4624,"p":"Microsoft-Windows-Security-Auditing","c":"DC01.corp.local","l":"Informationen","d":{"TargetUserName":"ANONYMOUS LOGON","TargetDomainName":"NT AUTHORITY","LogonType":"3","IpAddress":"10.20.30.9"}}
+# Unbekannte Event-ID — wird gespeichert, nicht verworfen
+{"r":184529402,"t":"2026-09-16T07:32:00.0000000Z","i":4999,"p":"Microsoft-Windows-Security-Auditing","c":"DC01.corp.local","l":"Informationen","d":{"TargetUserName":"asmith"}}

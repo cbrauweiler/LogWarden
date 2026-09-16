@@ -1,0 +1,13 @@
+[Unit]
+Description=Pull Windows event logs every five minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+# Each source keeps its own bookmark, so a missed run costs timeliness rather
+# than coverage — but a run skipped over a reboot should still happen.
+Persistent=true
+
+[Install]
+WantedBy=timers.target
