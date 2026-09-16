@@ -9,3 +9,4 @@
 !/var/run/.gitkeep
 .DS_Store
 *.swp
+/config/test-secret.key

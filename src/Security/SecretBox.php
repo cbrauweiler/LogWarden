@@ -59,14 +59,17 @@ final class SecretBox
         $nonce      = random_bytes(SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);
         $ciphertext = sodium_crypto_secretbox($plaintext, $nonce, $this->key);
 
+        // Hex plus decode() rather than binding the raw bytes: PDO's pgsql
+        // driver sends a bound string as text, and PostgreSQL rejects any byte
+        // sequence that is not valid UTF-8 — which ciphertext routinely is not.
         $this->db->execute(
-            'INSERT INTO secrets (ref_name, ciphertext, nonce, key_version)
-             VALUES (?, ?, ?, 1)
+            "INSERT INTO secrets (ref_name, ciphertext, nonce, key_version)
+             VALUES (?, decode(?, 'hex'), decode(?, 'hex'), 1)
              ON CONFLICT (ref_name) DO UPDATE
                 SET ciphertext = EXCLUDED.ciphertext,
                     nonce      = EXCLUDED.nonce,
-                    updated_at = now()',
-            [$refName, $ciphertext, $nonce],
+                    updated_at = now()",
+            [$refName, bin2hex($ciphertext), bin2hex($nonce)],
         );
     }
 

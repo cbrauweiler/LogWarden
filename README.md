@@ -45,6 +45,17 @@ bestehenden Alert wachsen, statt die Liste mit fast identischen Kopien zu
 füllen; `cooldown_s` steuert nur die Wiederbenachrichtigung. Geschlossen wird
 nie automatisch. Details in [docs/rules.md](docs/rules.md).
 
+### Benachrichtigung
+
+Microsoft Teams über Incoming Webhooks, als Adaptive Card. Ein Alert erreicht
+einen Kanal nur, wenn die Regel zugeordnet ist **und** der Schweregrad den
+Mindestwert des Kanals erreicht.
+
+Die Webhook-URL ist das Zugangsgeheimnis: verschlüsselt gespeichert, nie
+protokolliert, in der Oberfläche nie wieder angezeigt. URLs, die auf interne
+Adressen auflösen, werden abgelehnt — sonst wäre LogWarden ein Anfrage-Proxy
+ins eigene Netz. Details in [docs/notifications.md](docs/notifications.md).
+
 ### Corporate Identity
 
 Unter *Verwaltung → Corporate Identity* lassen sich Produktname, Logos,
@@ -90,7 +101,8 @@ bin/logwarden-maintenance
 # 6. Dienste
 cp deploy/systemd/* /etc/systemd/system/
 systemctl enable --now logwarden-syslogd logwarden-rules.timer \
-                       logwarden-maintenance.timer logwarden-spool-replay.timer
+                       logwarden-notify.timer logwarden-maintenance.timer \
+                       logwarden-spool-replay.timer
 ```
 
 `composer install` ist optional — ohne Composer greift ein eingebauter
@@ -167,6 +179,17 @@ deploy/       systemd-Units, nginx-Beispiel, Windows-Hinweise
 tests/        Unit-Tests und FortiGate-Fixtures
 ```
 
+## Benachrichtigung einrichten
+
+```bash
+echo 'https://prod-01.westeurope.logic.azure.com/workflows/…' \
+  | bin/logwarden-notify --set-webhook='SOC-Teams'
+
+bin/logwarden-notify --test=1          # Testkarte senden
+bin/logwarden-notify --list-channels   # Status aller Kanäle
+bin/logwarden-notify --dry-run
+```
+
 ## Regeln prüfen
 
 ```bash
@@ -196,7 +219,7 @@ LW_TEST_DSN='host=/var/run/postgresql;dbname=logwarden_test;user=logwarden;passw
 | Rule-Engine und die drei Startregeln | fertig |
 | Alert-Übersicht und Detailansicht | fertig |
 | Such- und Filteransicht, Event-Detailansicht | offen |
-| Teams-Benachrichtigung | offen |
+| Teams-Benachrichtigung ([Doku](docs/notifications.md)) | fertig |
 | WinRM-Pull für AD | offen |
 | DHCP-CSV-Import | offen |
 | DNS: Audit-Kanal, danach optional Analytic-Verdichtung ([Strategie](docs/dns.md)) | offen |

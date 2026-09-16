@@ -12,12 +12,16 @@ use LogWarden\Core\Db;
 use LogWarden\Core\Logger;
 use LogWarden\Alerting\AlertQuery;
 use LogWarden\Alerting\AlertRepository;
+use LogWarden\Notify\ChannelFactory;
+use LogWarden\Notify\Dispatcher;
 use LogWarden\Search\EventStats;
+use LogWarden\Security\SecretBox;
 use LogWarden\Web\Branding;
 use LogWarden\Web\Controller\AlertController;
 use LogWarden\Web\Controller\AssetController;
 use LogWarden\Web\Controller\BrandingController;
 use LogWarden\Web\Controller\DashboardController;
+use LogWarden\Web\Controller\NotificationController;
 use LogWarden\Web\Response;
 use LogWarden\Web\Router;
 use LogWarden\Web\View;
@@ -65,6 +69,7 @@ $view     = new View(LW_ROOT . '/templates');
 
 // Development identity; replaced by the session user once LDAP auth lands.
 $actor = 'dev@localhost';
+$secretError = null;
 
 $view->share('branding', $branding->load());
 $view->share('assets', $branding->assetIndex());
@@ -80,6 +85,43 @@ $alertsC   = new AlertController($alertQuery, new AlertRepository($db), $view, $
 $brandingC = new BrandingController($branding, $view, $actor);
 $assets    = new AssetController($branding);
 
+/*
+ * The secret store needs the master key. A missing or unreadable key must not
+ * take the whole UI down — everything except the notification settings works
+ * without it, so the failure is confined to the page that needs it.
+ */
+$notifications = null;
+
+try {
+    $secrets = SecretBox::open((string) $config->require('secret_key_file'), $db);
+
+    $brandingData = $branding->load();
+    $brandingData['base_url'] = (string) $config->get('web.base_url', '');
+
+    $channelFactory = ChannelFactory::fromConfig($config);
+
+    $notifications = new NotificationController(
+        $db,
+        $secrets,
+        new Dispatcher(
+            $db,
+            $secrets,
+            $channelFactory,
+            new LogWarden\Alerting\AlertRepository($db),
+            $logger,
+            $brandingData,
+        ),
+        $channelFactory,
+        $view,
+        $actor,
+    );
+} catch (Throwable $e) {
+    $logger->warning('Secret store unavailable; notification settings disabled', [
+        'error' => $e->getMessage(),
+    ]);
+    $secretError = $e->getMessage();
+}
+
 $router = new Router();
 $router->get('/',                   fn (): Response => $dashboard->show());
 $router->get('/dashboard',          fn (): Response => Response::redirect('/'));
@@ -90,6 +132,30 @@ $router->post('/settings/branding', fn (): Response => $brandingC->save());
 $router->get('/alerts',             fn (): Response => $alertsC->index());
 $router->post('/alerts/ack',        fn (): Response => $alertsC->acknowledge());
 $router->get('/alert',              fn (): Response => $alertsC->show());
+$router->get('/settings/notifications', function () use ($notifications, $secretError): Response {
+    if ($notifications === null) {
+        return Response::html(
+            '<!doctype html><meta charset="utf-8"><title>Schlüsselspeicher</title>'
+            . '<body style="font:14px system-ui;max-width:42rem;margin:4rem auto;padding:0 1rem">'
+            . '<h1>Schlüsselspeicher nicht verfügbar</h1><p>'
+            . htmlspecialchars($secretError ?? 'Unbekannter Fehler', ENT_QUOTES)
+            . '</p><p>Erzeugen mit <code>bin/logwarden-keygen</code>.</p></body>',
+            503,
+        );
+    }
+
+    $flash = [];
+    if (isset($_GET['saved']))   { $flash[] = 'Kanal gespeichert.'; }
+    if (isset($_GET['created'])) { $flash[] = 'Kanal angelegt. Jetzt die Webhook-URL hinterlegen.'; }
+    if (isset($_GET['deleted'])) { $flash[] = 'Kanal gelöscht.'; }
+    if (isset($_GET['webhook'])) { $flash[] = 'Webhook-URL verschlüsselt gespeichert.'; }
+    if (isset($_GET['routing'])) { $flash[] = 'Zuordnung gespeichert.'; }
+
+    return $notifications->show($flash);
+});
+$router->post('/settings/notifications', fn (): Response => $notifications === null
+    ? Response::redirect('/settings/notifications')
+    : $notifications->save());
 $router->get('/theme.css',   fn (): Response => $assets->themeCss());
 $router->get('/branding/logo',      fn (): Response => $assets->logo());
 

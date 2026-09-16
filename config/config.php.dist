@@ -54,6 +54,17 @@ return [
         'max_message_bytes' => 65535,
     ],
 
+    'notify' => [
+        // Outbound proxy for the Teams webhook, if the SOC network has one.
+        // Example: 'http://proxy.corp.local:3128'
+        'proxy' => null,
+
+        // The webhook URL is admin-supplied and this process can reach the
+        // whole internal network, so URLs resolving to private addresses are
+        // rejected. Enable only if you deliver through an internal relay.
+        'allow_private_targets' => false,
+    ],
+
     'web' => [
         // 'ldap'  - Active Directory bind (production)
         // 'local' - only local break-glass accounts
@@ -64,6 +75,10 @@ return [
         'session_idle_ttl' => 60 * 60,
         // Sent as Strict-Transport-Security once you terminate TLS.
         'behind_tls'       => true,
+
+        // Used to build the "open in LogWarden" link in Teams cards. Leave
+        // empty and the cards simply carry no link.
+        'base_url'         => 'https://logwarden.example.local',
     ],
 
     'ldap' => [

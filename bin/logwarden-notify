@@ -1,0 +1,159 @@
+#!/usr/bin/env php
+<?php
+/**
+ * Delivers open alerts to their configured Teams channels.
+ *
+ * Usage: bin/logwarden-notify [--config=PATH] [--dry-run] [--test=CHANNEL_ID]
+ *                             [--list-channels] [--set-webhook=NAME]
+ *
+ * Separate from the rule engine on purpose: a Teams outage must not slow down
+ * or fail detection, and a retry must not re-evaluate rules.
+ */
+
+declare(strict_types=1);
+
+require dirname(__DIR__) . '/src/bootstrap.php';
+
+use LogWarden\Alerting\AlertRepository;
+use LogWarden\Core\Config;
+use LogWarden\Core\Db;
+use LogWarden\Core\Logger;
+use LogWarden\Notify\ChannelFactory;
+use LogWarden\Notify\Dispatcher;
+use LogWarden\Security\SecretBox;
+use LogWarden\Web\Branding;
+
+$options = getopt('', ['config::', 'dry-run', 'test::', 'list-channels', 'set-webhook::', 'help']);
+
+if (isset($options['help'])) {
+    fwrite(STDOUT, <<<TXT
+    Usage: logwarden-notify [options]
+
+      --config=PATH       alternative configuration file
+      --dry-run           decide and report, send nothing
+      --test=ID           send a test card to that channel
+      --list-channels     list configured channels and their health
+      --set-webhook=NAME  read a webhook URL from stdin and store it encrypted
+
+    Example:
+      echo 'https://prod-01.westeurope.logic.azure.com/workflows/...' \\
+        | bin/logwarden-notify --set-webhook='SOC-Teams'
+
+    TXT);
+    exit(0);
+}
+
+try {
+    $config = Config::load(is_string($options['config'] ?? null) ? $options['config'] : null);
+    $logger = Logger::fromConfig($config, 'notify');
+    $db     = Db::fromConfig($config, $logger);
+
+    if (isset($options['list-channels'])) {
+        $rows = $db->fetchAll(
+            "SELECT c.id, c.name, c.type, c.enabled, c.min_severity, c.secret_ref,
+                    c.sent_total, c.failed_total, c.last_error,
+                    to_char(c.last_success_at, 'DD.MM. HH24:MI') AS last_success,
+                    count(rc.rule_id) AS rules
+               FROM notification_channels c
+               LEFT JOIN rule_channels rc ON rc.channel_id = c.id
+              GROUP BY c.id ORDER BY c.name"
+        );
+
+        if ($rows === []) {
+            fwrite(STDOUT, "Keine Kanäle konfiguriert.\n");
+            exit(0);
+        }
+
+        foreach ($rows as $row) {
+            fwrite(STDOUT, sprintf(
+                "#%-3d %-24s %-15s %s  ab Schweregrad %d  %d Regel(n)\n",
+                $row['id'],
+                $row['name'],
+                $row['type'],
+                $row['enabled'] ? 'aktiv  ' : 'inaktiv',
+                $row['min_severity'],
+                $row['rules'],
+            ));
+            fwrite(STDOUT, sprintf(
+                "     Zustellungen: %d gesendet, %d fehlgeschlagen, zuletzt erfolgreich: %s\n",
+                $row['sent_total'],
+                $row['failed_total'],
+                $row['last_success'] ?? 'nie',
+            ));
+            if (!empty($row['last_error'])) {
+                fwrite(STDOUT, '     Letzter Fehler: ' . $row['last_error'] . "\n");
+            }
+            if (empty($row['secret_ref'])) {
+                fwrite(STDOUT, "     WARNUNG: keine Webhook-URL hinterlegt\n");
+            }
+            fwrite(STDOUT, "\n");
+        }
+        exit(0);
+    }
+
+    $secrets  = SecretBox::open((string) $config->require('secret_key_file'), $db);
+
+    if (isset($options['set-webhook']) && is_string($options['set-webhook']) && $options['set-webhook'] !== '') {
+        $name    = $options['set-webhook'];
+        $channel = $db->fetchRow('SELECT id, type, secret_ref FROM notification_channels WHERE name = ?', [$name]);
+
+        if ($channel === null) {
+            fwrite(STDERR, "Kanal '{$name}' existiert nicht. Zuerst unter Verwaltung → Benachrichtigungen anlegen.\n");
+            exit(1);
+        }
+
+        // Read from stdin rather than argv: the URL is the credential, and
+        // arguments end up in shell history and in `ps`.
+        $url = trim((string) stream_get_contents(STDIN));
+
+        if ($url === '') {
+            fwrite(STDERR, "Keine URL auf stdin empfangen.\n");
+            exit(1);
+        }
+
+        ChannelFactory::fromConfig($config)->assertUsableUrl((string) $channel['type'], $url);
+
+        $ref = $channel['secret_ref'] ?: 'teams.' . preg_replace('/[^a-z0-9]+/', '-', strtolower($name));
+        $secrets->put($ref, $url);
+        $db->execute('UPDATE notification_channels SET secret_ref = ? WHERE id = ?', [$ref, $channel['id']]);
+
+        fwrite(STDOUT, "Webhook-URL verschlüsselt gespeichert als '{$ref}'.\n");
+        fwrite(STDOUT, "Test: bin/logwarden-notify --test={$channel['id']}\n");
+        exit(0);
+    }
+
+    $branding = (new Branding($db))->load();
+    $branding['base_url'] = (string) $config->get('web.base_url', '');
+
+    $dispatcher = new Dispatcher(
+        $db,
+        $secrets,
+        ChannelFactory::fromConfig($config),
+        new AlertRepository($db),
+        $logger,
+        $branding,
+    );
+
+    if (isset($options['test']) && $options['test'] !== false) {
+        $result = $dispatcher->test((int) $options['test']);
+        fwrite($result['ok'] ? STDOUT : STDERR, $result['message'] . "\n");
+        exit($result['ok'] ? 0 : 1);
+    }
+
+    $dryRun = isset($options['dry-run']);
+    $stats  = $dispatcher->run($dryRun);
+
+    $logger->info($dryRun ? 'Notification run complete (dry run)' : 'Notification run complete', $stats);
+
+    if ($stats['unrouted'] > 0) {
+        $logger->warning(
+            'Alerts ohne passenden Kanal — Regel-Zuordnung oder Mindest-Schweregrad prüfen',
+            ['count' => $stats['unrouted']],
+        );
+    }
+
+    exit(0);
+} catch (Throwable $e) {
+    fwrite(STDERR, 'logwarden-notify: ' . $e->getMessage() . "\n");
+    exit(1);
+}

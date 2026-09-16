@@ -24,6 +24,7 @@ $nav = [
 $adminNav = [
     ['id' => 'sources',  'href' => '/settings/sources',  'label' => 'Quellen',            'icon' => 'plug'],
     ['id' => 'rules',    'href' => '/settings/rules',    'label' => 'Regeln',             'icon' => 'shield'],
+    ['id' => 'notifications', 'href' => '/settings/notifications', 'label' => 'Benachrichtigungen', 'icon' => 'send'],
     ['id' => 'branding', 'href' => '/settings/branding', 'label' => 'Corporate Identity', 'icon' => 'palette'],
 ];
 
@@ -33,6 +34,7 @@ $icons = [
     'bell'    => '<path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/>',
     'plug'    => '<path d="M9 2v6M15 2v6M6 8h12v3a6 6 0 0 1-12 0zM12 17v5"/>',
     'shield'  => '<path d="M12 2 4 6v6c0 5 3.4 8.9 8 10 4.6-1.1 8-5 8-10V6z"/>',
+    'send'    => '<path d="m21 3-9.5 9.5M21 3l-6.5 18-4-8-8-4z"/>',
     'palette' => '<circle cx="12" cy="12" r="9"/><circle cx="8.5" cy="10" r="1.2"/><circle cx="12" cy="7.5" r="1.2"/><circle cx="15.5" cy="10" r="1.2"/>',
 ];
 

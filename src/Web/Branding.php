@@ -345,16 +345,19 @@ final class Branding
             }
         }
 
+        // decode(?, 'hex') rather than binding the bytes: PDO sends a bound
+        // string as text and PostgreSQL rejects invalid UTF-8, so a PNG or an
+        // ICO would fail where an SVG happens to succeed.
         $this->db->execute(
-            'INSERT INTO branding_assets (slot, mime_type, byte_size, checksum, data, updated_at)
-             VALUES (?, ?, ?, ?, ?, now())
+            "INSERT INTO branding_assets (slot, mime_type, byte_size, checksum, data, updated_at)
+             VALUES (?, ?, ?, ?, decode(?, 'hex'), now())
              ON CONFLICT (slot) DO UPDATE
                 SET mime_type = EXCLUDED.mime_type,
                     byte_size = EXCLUDED.byte_size,
                     checksum  = EXCLUDED.checksum,
                     data      = EXCLUDED.data,
-                    updated_at = now()',
-            [$slot, $mime, strlen($data), hash('sha256', $data), $data],
+                    updated_at = now()",
+            [$slot, $mime, strlen($data), hash('sha256', $data), bin2hex($data)],
         );
 
         $this->bumpRevision();

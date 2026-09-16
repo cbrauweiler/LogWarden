@@ -257,9 +257,10 @@ code, kbd, pre, .mono { font-family: var(--font-mono); font-size: 0.86em; }
 
 .topbar__meta { color: var(--ink-3); font-size: 0.8rem; }
 
-.content { padding: 1.5rem; max-width: 1400px; width: 100%; }
+.content { padding: 1.5rem; max-width: 1400px; width: 100%; min-width: 0; }
 
-.stack { display: flex; flex-direction: column; gap: 1.25rem; }
+.stack { display: flex; flex-direction: column; gap: 1.25rem; min-width: 0; }
+.stack > * { min-width: 0; }
 .row   { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
 .grow  { flex: 1; }
 
@@ -270,6 +271,9 @@ code, kbd, pre, .mono { font-family: var(--font-mono); font-size: 0.86em; }
     border: 1px solid var(--line);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-sm);
+    /* Without this a wide table inside the card propagates its intrinsic
+       width up the flex chain and the scroll container never gets to scroll. */
+    min-width: 0;
 }
 
 .card__head {
@@ -283,8 +287,11 @@ code, kbd, pre, .mono { font-family: var(--font-mono); font-size: 0.86em; }
     padding: 0;
     /* Wide tables scroll inside their card rather than pushing the page
        sideways; a horizontally scrolling page makes the whole UI unusable on
-       a phone. */
+       a phone. `contain: paint` keeps the overflow from propagating into the
+       root scroll width, which otherwise leaves the page scrollable over
+       empty space. */
     overflow-x: auto;
+    contain: paint;
 }
 .card__hint { color: var(--ink-3); font-size: 0.8rem; margin: 0.15rem 0 0; }
 
@@ -431,10 +438,13 @@ code, kbd, pre, .mono { font-family: var(--font-mono); font-size: 0.86em; }
 .btn--danger:hover { background: color-mix(in srgb, var(--status-critical) 10%, transparent); }
 
 .actions {
-    display: flex; gap: 0.6rem; align-items: center;
+    display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap;
     padding: var(--card-pad);
     border-top: 1px solid var(--line);
 }
+/* Inputs in an action bar must be allowed to shrink, or a fixed max-width
+   becomes an effective min-width and pushes the page sideways on a phone. */
+.actions .input, .actions .select { min-width: 0; flex: 1 1 12rem; }
 
 /* --- Notices ------------------------------------------------------------- */
 

@@ -1,0 +1,17 @@
+[Unit]
+Description=LogWarden alert notification delivery
+After=postgresql.service network-online.target
+
+[Service]
+Type=oneshot
+User=logwarden
+Group=logwarden
+WorkingDirectory=/opt/logwarden
+ExecStart=/usr/bin/php /opt/logwarden/bin/logwarden-notify
+EnvironmentFile=-/etc/logwarden/env
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+ReadWritePaths=/opt/logwarden/var
