@@ -78,7 +78,10 @@ final class VpnThenAdFail implements RuleInterface
                FROM events v
                JOIN events f
                  ON f.username_norm = v.username_norm
-                AND f.source_type   = 'ad'
+                -- By role, not by name. A second directory or a second VPN
+                -- vendor joins this rule by being installed, rather than by
+                -- somebody remembering to add it here.
+                AND f.source_type   IN (SELECT key FROM source_types WHERE role = 'directory')
                 AND f.result        = 'fail'
                 AND f.ts >  v.ts
                 AND f.ts <= v.ts + make_interval(mins => ?)
@@ -86,7 +89,7 @@ final class VpnThenAdFail implements RuleInterface
                 {$adFilter}
               WHERE v.ts >= ?::timestamptz
                 AND v.ts <  ?::timestamptz
-                AND v.source_type = 'fortigate_vpn'
+                AND v.source_type IN (SELECT key FROM source_types WHERE role = 'vpn')
                 AND v.result      = 'success'
                 AND v.username IS NOT NULL
               GROUP BY v.username, v.username_norm, v.ts, v.id, v.src_ip, v.source_host
@@ -167,7 +170,7 @@ final class VpnThenAdFail implements RuleInterface
                 AND ts <= ?::timestamptz + make_interval(mins => ?)
                 AND ts <  ?::timestamptz
                 AND username_norm = lower(?)
-                AND source_type = 'ad'
+                AND source_type IN (SELECT key FROM source_types WHERE role = 'directory')
                 AND result = 'fail'
               ORDER BY ts
               LIMIT 50",

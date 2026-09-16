@@ -49,12 +49,19 @@
     --status-critical: #d03b3b;
     --status-good-text: #006300;
 
-    /* Categorical series — fixed, validated set (light steps) */
-    --series-1: #2a78d6;   /* Active Directory */
-    --series-2: #eb6834;   /* DNS */
-    --series-3: #1baf7a;   /* DHCP */
-    --series-4: #eda100;   /* FortiGate VPN */
-    --series-5: #e87ba4;   /* FortiGate Auth */
+    /* Categorical series — fixed, validated set (light steps).
+       Eight steps, not five: a plugin brings its own source types, and a
+       vendor that runs off the end of the palette would be assigned a
+       fallback colour that was never checked against the others. Checked as
+       a set for colour-vision deficiency, see docs/plugins.md. */
+    --series-1: #2a78d6;
+    --series-2: #eb6834;
+    --series-3: #1baf7a;
+    --series-4: #eda100;
+    --series-5: #e87ba4;
+    --series-6: #8b5cf6;
+    --series-7: #0891b2;
+    --series-8: #84663a;
 
     /* Chart chrome */
     --grid:     #e1e0d9;
@@ -105,6 +112,9 @@
         --series-3: #199e70;
         --series-4: #c98500;
         --series-5: #d55181;
+        --series-6: #7c4ddb;
+        --series-7: #0b7d99;
+        --series-8: #8a6d43;
 
         --grid:     #2c2c2a;
         --baseline: #383835;
@@ -136,6 +146,9 @@
     --series-3: #199e70;
     --series-4: #c98500;
     --series-5: #d55181;
+    --series-6: #7c4ddb;
+    --series-7: #0b7d99;
+    --series-8: #8a6d43;
 
     --grid:     #2c2c2a;
     --baseline: #383835;
@@ -843,3 +856,10 @@ details.tableview > summary:hover { color: var(--ink-1); }
 
 details > summary { cursor: pointer; font-size: 0.82rem; padding: 0.2rem 0; }
 details > summary:hover { color: var(--ink-1); }
+
+/* --- Plugin list ---------------------------------------------------------- */
+
+.chip__swatch {
+    display: inline-block; width: 8px; height: 8px; flex: none;
+    border-radius: 2px; margin-right: 0.35rem; vertical-align: baseline;
+}

@@ -59,7 +59,7 @@ function rtEvent(Db $db, int $minutesAgo, array $event): void
     $db->execute(
         "INSERT INTO events (ts, source_type, source_host, event_type, username, src_ip,
                              result, raw_message, details, dedup_key)
-         VALUES (now() - make_interval(mins => ?), ?::source_type_t, ?, ?, ?, ?::inet,
+         VALUES (now() - make_interval(mins => ?), ?, ?, ?, ?, ?::inet,
                  ?::event_result_t, ?, ?::jsonb, ?)",
         [
             $minutesAgo,

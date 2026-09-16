@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace LogWarden\Ingest\Fortigate;
+namespace LogWarden\Plugin\Fortigate;
 
 /**
  * ArcSight Common Event Format parser.

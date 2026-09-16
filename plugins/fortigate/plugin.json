@@ -1,0 +1,11 @@
+{
+    "key": "fortigate",
+    "name": "Fortinet FortiGate",
+    "vendor": "Fortinet",
+    "version": "1.0.0",
+    "description": "VPN- und Authentifizierungs-Events per Syslog, im FortiOS-Format key=value und in CEF.",
+    "namespace": "LogWarden\\Plugin\\Fortigate",
+    "class": "FortigatePlugin",
+    "docs": "README.md",
+    "author": "LogWarden"
+}

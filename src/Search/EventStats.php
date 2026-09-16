@@ -60,10 +60,12 @@ final class EventStats
                         ) AS slot
              )
              SELECT to_char(s.slot, 'YYYY-MM-DD\"T\"HH24:MI') AS bucket,
-                    t.source_type::text                       AS source_type,
+                    t.source_type                             AS source_type,
                     count(e.*)                                AS total
                FROM slots s
-               CROSS JOIN unnest(enum_range(NULL::source_type_t)) AS t(source_type)
+               -- Aus der Registry statt aus einem Enum: ein neu installiertes
+               -- Plugin erscheint dadurch im Diagramm, sobald es Daten liefert.
+               CROSS JOIN (SELECT key AS source_type FROM source_types) AS t
                LEFT JOIN events e
                       ON e.source_type = t.source_type
                      AND e.ts >= s.slot
@@ -151,12 +153,6 @@ final class EventStats
     /** Human labels for the legend and the source filter. */
     public static function sourceLabels(): array
     {
-        $labels = [];
-
-        foreach (SourceType::cases() as $case) {
-            $labels[$case->value] = $case->label();
-        }
-
-        return $labels;
+        return SourceType::labels();
     }
 }

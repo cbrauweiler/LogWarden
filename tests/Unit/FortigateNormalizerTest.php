@@ -5,7 +5,7 @@ declare(strict_types=1);
 use LogWarden\Event\Event;
 use LogWarden\Event\EventResult;
 use LogWarden\Event\SourceType;
-use LogWarden\Ingest\Fortigate\FortigateNormalizer;
+use LogWarden\Plugin\Fortigate\FortigateNormalizer;
 
 /** @return array<int, \LogWarden\Event\Event> */
 function normalizeAll(string $fixture): array
@@ -25,7 +25,7 @@ function normalizeAll(string $fixture): array
 test('native VPN tunnel-up is normalised', function (): void {
     $event = normalizeAll('fortigate-native.log')[0];
 
-    assertSame(SourceType::FortigateVpn, $event->sourceType);
+    assertSame('fortigate_vpn', $event->sourceType->value);
     assertSame('FGT-60F-HQ', $event->sourceHost);
     assertSame('tunnel-up', $event->eventType);
     assertSame('jdoe', $event->username);
@@ -50,7 +50,7 @@ test('DOMAIN\\user is reduced to the bare principal for correlation', function (
 test('user@domain is reduced the same way', function (): void {
     $event = normalizeAll('fortigate-native.log')[2];
 
-    assertSame(SourceType::FortigateAuth, $event->sourceType);
+    assertSame('fortigate_auth', $event->sourceType->value);
     assertSame('asmith', $event->username);
     assertSame('asmith@corp.local', $event->details['user_raw']);
     assertSame(EventResult::Fail, $event->result);
@@ -61,7 +61,7 @@ test('user@domain is reduced the same way', function (): void {
 test('authentication success maps to result success', function (): void {
     $event = normalizeAll('fortigate-native.log')[3];
 
-    assertSame(SourceType::FortigateAuth, $event->sourceType);
+    assertSame('fortigate_auth', $event->sourceType->value);
     assertSame(EventResult::Success, $event->result);
     assertSame('jdoe', $event->username);
 });
@@ -96,7 +96,7 @@ test('eventtime in seconds is understood as well as nanoseconds', function (): v
 test('CEF login failure is normalised identically to the native form', function (): void {
     $event = normalizeAll('fortigate-cef.log')[0];
 
-    assertSame(SourceType::FortigateVpn, $event->sourceType);
+    assertSame('fortigate_vpn', $event->sourceType->value);
     assertSame('ssl-login-fail', $event->eventType);
     assertSame('asmith', $event->username);
     assertSame('198.51.100.44', $event->srcIp);
@@ -107,7 +107,7 @@ test('CEF login failure is normalised identically to the native form', function 
 test('CEF custom labels reach the details column', function (): void {
     $event = normalizeAll('fortigate-cef.log')[1];
 
-    assertSame(SourceType::FortigateAuth, $event->sourceType);
+    assertSame('fortigate_auth', $event->sourceType->value);
     assertSame(EventResult::Success, $event->result);
     assertSame('fortitoken', $event->details['method']);
     assertSame('10.10.0.1', $event->dstIp);
@@ -125,7 +125,7 @@ test('an envelope-wrapped payload is normalised through the envelope', function 
 
     assertCount(3, $events);
     assertSame('jdoe', $events[0]->username);
-    assertSame(SourceType::FortigateVpn, $events[0]->sourceType);
+    assertSame('fortigate_vpn', $events[0]->sourceType->value);
     assertSame('asmith', $events[1]->username);
     assertSame(EventResult::Fail, $events[1]->result);
     assertSame(EventResult::Fail, $events[2]->result);

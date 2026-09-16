@@ -243,7 +243,7 @@ function adLogon(DateTimeImmutable $ts): Event
 
     return demoEvent(
         $ts,
-        SourceType::Ad,
+        SourceType::of('ad'),
         $host,
         '4624',
         sprintf('[4624] Anmeldung erfolgreich %s von %s (%s)', $user, $ip, LOGON_TYPES[$type]),
@@ -271,7 +271,7 @@ function adFailure(DateTimeImmutable $ts): Event
 
     return demoEvent(
         $ts,
-        SourceType::Ad,
+        SourceType::of('ad'),
         $host,
         '4625',
         sprintf('[4625] Anmeldung fehlgeschlagen %s von %s (Netzwerk (Freigabe, Dienst)) — %s', $user, $ip, $reason),
@@ -306,7 +306,7 @@ function adAccountChange(DateTimeImmutable $ts): Event
 
     return demoEvent(
         $ts,
-        SourceType::Ad,
+        SourceType::of('ad'),
         $host,
         $id,
         sprintf('[%s] %s %s durch %s', $id, $label, $user, $actor),
@@ -330,7 +330,7 @@ function fortigateVpn(DateTimeImmutable $ts): Event
 
     return demoEvent(
         $ts,
-        SourceType::FortigateVpn,
+        SourceType::of('fortigate_vpn'),
         $device,
         $action,
         sprintf(
@@ -361,7 +361,7 @@ function fortigateAuth(DateTimeImmutable $ts): Event
 
     return demoEvent(
         $ts,
-        SourceType::FortigateAuth,
+        SourceType::of('fortigate_auth'),
         $device,
         $success ? 'authentication' : 'auth-fail',
         sprintf(
@@ -389,7 +389,7 @@ function dhcp(DateTimeImmutable $ts): Event
 
     return demoEvent(
         $ts,
-        SourceType::Dhcp,
+        SourceType::of('dhcp'),
         DHCPS[0],
         'DHCP-ACK',
         sprintf(
@@ -421,7 +421,7 @@ function dnsAudit(DateTimeImmutable $ts): Event
 
     return demoEvent(
         $ts,
-        SourceType::Dns,
+        SourceType::of('dns'),
         DCS[0],
         $id,
         sprintf('[%s] %s %s.%s durch %s', $id, $label, strtolower($record), $zone, $actor),
@@ -450,7 +450,7 @@ function bruteForceBurst(DateTimeImmutable $start): array
 
             $events[] = demoEvent(
                 $ts,
-                SourceType::Ad,
+                SourceType::of('ad'),
                 DCS[0],
                 '4625',
                 sprintf('[4625] Anmeldung fehlgeschlagen %s von %s (Netzwerk (Freigabe, Dienst)) — %s', $name, $ip, $reason),
@@ -471,7 +471,7 @@ function bruteForceBurst(DateTimeImmutable $start): array
     foreach (['pweber', 'asmith'] as $offset => $victim) {
         $events[] = demoEvent(
             $start->modify('+' . (300 + $offset * 30) . ' seconds'),
-            SourceType::Ad,
+            SourceType::of('ad'),
             DCS[0],
             '4740',
             sprintf('[4740] Konto gesperrt %s — ausgelöst von %s', $victim, WORKSTATIONS[$victim]),
@@ -504,7 +504,7 @@ function vpnThenAdFailure(DateTimeImmutable $start): array
 
     $events[] = demoEvent(
         $start,
-        SourceType::FortigateVpn,
+        SourceType::of('fortigate_vpn'),
         FIREWALLS[0],
         'tunnel-up',
         sprintf(
@@ -524,7 +524,7 @@ function vpnThenAdFailure(DateTimeImmutable $start): array
     for ($i = 0; $i < 9; $i++) {
         $events[] = demoEvent(
             $start->modify('+' . (45 + $i * 23) . ' seconds'),
-            SourceType::Ad,
+            SourceType::of('ad'),
             DCS[mt_rand(0, 1)],
             '4771',
             sprintf(

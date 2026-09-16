@@ -39,12 +39,18 @@ final class FailedLoginBurst implements RuleInterface
     {
         return [
             'threshold' => 5,
-            // source_type => event types that count as a logon failure.
-            // An empty list means every failed event of that source counts.
-            'sources' => [
-                'ad'             => ['4625', '4771', '4776'],
-                'fortigate_auth' => [],
-                'fortigate_vpn'  => ['ssl-login-fail', 'login-fail', 'auth-logon-failed', 'auth-lockout'],
+
+            // Which kinds of source count as a logon attempt. Stated as roles
+            // so that a newly installed vendor takes part without this rule
+            // having to learn its name.
+            'roles' => ['directory', 'auth', 'vpn'],
+
+            // Optional narrowing per source type: without an entry, every
+            // failed event of a matching role counts. Active Directory needs
+            // one because its channel also carries failures that are not logon
+            // attempts.
+            'event_types' => [
+                'ad' => ['4625', '4771', '4776'],
             ],
             // Service accounts that fail constantly by design would otherwise
             // drown out the accounts that matter.
@@ -54,11 +60,20 @@ final class FailedLoginBurst implements RuleInterface
 
     public function evaluate(RuleContext $context, array $params): array
     {
-        $threshold = max(2, (int) ($params['threshold'] ?? 5));
-        $sources   = is_array($params['sources'] ?? null) ? $params['sources'] : [];
-        $ignore    = is_array($params['ignore_users'] ?? null) ? $params['ignore_users'] : [];
+        $threshold  = max(2, (int) ($params['threshold'] ?? 5));
+        $roles      = is_array($params['roles'] ?? null) ? $params['roles'] : [];
+        $eventTypes = is_array($params['event_types'] ?? null) ? $params['event_types'] : [];
+        $ignore     = is_array($params['ignore_users'] ?? null) ? $params['ignore_users'] : [];
 
-        [$sourceClause, $sourceParams] = self::buildSourceFilter($sources);
+        // Rules stored before the move to roles still carry a `sources` map of
+        // source_type => event types. Read it rather than falling silent: a
+        // rule that quietly stops matching is worse than one that refuses.
+        if ($roles === [] && is_array($params['sources'] ?? null)) {
+            $eventTypes = $params['sources'] + $eventTypes;
+            $roles      = ['directory', 'auth', 'vpn'];
+        }
+
+        [$sourceClause, $sourceParams] = self::buildSourceFilter($roles, $eventTypes);
 
         if ($sourceClause === null) {
             return [];   // no source configured, nothing to evaluate
@@ -139,30 +154,47 @@ final class FailedLoginBurst implements RuleInterface
     }
 
     /**
-     * @param array<string, list<string>> $sources
+     * @param list<string>                $roles
+     * @param array<string, list<string>> $eventTypes
      * @return array{0: string|null, 1: list<string>}
      */
-    private static function buildSourceFilter(array $sources): array
+    private static function buildSourceFilter(array $roles, array $eventTypes): array
     {
-        $clauses = [];
-        $params  = [];
+        $roles = array_values(array_filter($roles, static fn (mixed $r): bool => is_string($r) && $r !== ''));
 
-        foreach ($sources as $sourceType => $eventTypes) {
-            if (!is_string($sourceType) || $sourceType === '') {
-                continue;
-            }
+        if ($roles === []) {
+            return [null, []];
+        }
 
-            if (is_array($eventTypes) && $eventTypes !== []) {
-                $clauses[] = '(source_type = ?::source_type_t AND event_type = ANY(?::text[]))';
-                $params[]  = $sourceType;
-                $params[]  = RuleContext::pgArray(array_map('strval', $eventTypes));
-            } else {
-                $clauses[] = '(source_type = ?::source_type_t)';
-                $params[]  = $sourceType;
+        // Source types that carry their own event-type filter are taken out of
+        // the broad role clause and added back individually. Listing 'ad' then
+        // narrows Active Directory without also switching off any other
+        // directory that happens to be installed.
+        $narrowed = [];
+
+        foreach ($eventTypes as $sourceType => $types) {
+            if (is_string($sourceType) && $sourceType !== '' && is_array($types) && $types !== []) {
+                $narrowed[$sourceType] = array_map('strval', $types);
             }
         }
 
-        return $clauses === [] ? [null, []] : [implode(' OR ', $clauses), $params];
+        $clause = 'source_type IN (SELECT key FROM source_types WHERE role = ANY(?::text[])';
+        $params = [RuleContext::pgArray($roles)];
+
+        if ($narrowed !== []) {
+            $clause  .= ' AND key <> ALL(?::text[])';
+            $params[] = RuleContext::pgArray(array_keys($narrowed));
+        }
+
+        $clauses = [$clause . ')'];
+
+        foreach ($narrowed as $sourceType => $types) {
+            $clauses[] = '(source_type = ? AND event_type = ANY(?::text[]))';
+            $params[]  = $sourceType;
+            $params[]  = RuleContext::pgArray($types);
+        }
+
+        return [implode(' OR ', $clauses), $params];
     }
 
     /** @return list<array{0:string,1:int}> */

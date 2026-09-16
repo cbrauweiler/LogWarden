@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace LogWarden\Ingest\Fortigate;
+namespace LogWarden\Plugin\Fortigate;
 
 use DateTimeImmutable;
 use DateTimeZone;
@@ -163,24 +163,24 @@ final class FortigateNormalizer implements NormalizerInterface
         // FortiOS log IDs are the most reliable signal: 0101… is event/vpn,
         // 0102… is event/user.
         if (str_starts_with($logid, '0101')) {
-            return SourceType::FortigateVpn;
+            return SourceType::of('fortigate_vpn');
         }
         if (str_starts_with($logid, '0102')) {
-            return SourceType::FortigateAuth;
+            return SourceType::of('fortigate_auth');
         }
 
         if ($subtype === 'vpn' || str_contains($subtype, 'vpn')) {
-            return SourceType::FortigateVpn;
+            return SourceType::of('fortigate_vpn');
         }
         if (in_array($subtype, ['user', 'auth', 'authentication'], true)) {
-            return SourceType::FortigateAuth;
+            return SourceType::of('fortigate_auth');
         }
 
         if (str_contains($action, 'tunnel') || str_contains($action, 'ssl-login') || str_contains($action, 'ssl-logout')) {
-            return SourceType::FortigateVpn;
+            return SourceType::of('fortigate_vpn');
         }
         if (str_contains($action, 'auth') || str_contains($action, 'login') || str_contains($action, 'logout')) {
-            return SourceType::FortigateAuth;
+            return SourceType::of('fortigate_auth');
         }
 
         return null;
@@ -192,7 +192,9 @@ final class FortigateNormalizer implements NormalizerInterface
         $candidate = $this->pick($fields, ['action', 'cef_name', 'logdesc', 'subtype']);
 
         if ($candidate === null || $candidate === '') {
-            return $sourceType === SourceType::FortigateVpn ? 'vpn-event' : 'auth-event';
+            // ->is(), not ===: SourceType is a value object now, and two
+            // instances of the same type are equal without being identical.
+            return $sourceType->is('fortigate_vpn') ? 'vpn-event' : 'auth-event';
         }
 
         // Normalise to a stable, lowercase, dash-separated token; event_type is

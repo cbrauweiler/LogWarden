@@ -17,8 +17,8 @@ use LogWarden\Core\Config;
 use LogWarden\Core\Db;
 use LogWarden\Core\Logger;
 use LogWarden\Event\EventWriter;
-use LogWarden\Ingest\Fortigate\FortigateNormalizer;
 use LogWarden\Ingest\Syslog\PeerFilter;
+use LogWarden\Plugin\PluginRegistry;
 use LogWarden\Ingest\Syslog\SyslogServer;
 
 $options    = getopt('', ['config::', 'help']);
@@ -56,11 +56,37 @@ try {
         );
     }
 
+    // Which vendors this listener understands is decided by what lies in
+    // plugins/, not by this file. Adding Cisco means dropping a directory in
+    // and restarting the daemon.
+    $plugins     = PluginRegistry::default();
+    $normalizers = $plugins->normalizersFor('syslog');
+
+    foreach ($plugins->errors() as $error) {
+        $logger->warning('Plugin nicht geladen', ['error' => $error]);
+    }
+
+    if ($normalizers === []) {
+        throw new RuntimeException(
+            'Kein Syslog-Plugin installiert — der Listener würde jede Nachricht verwerfen. '
+            . 'Vorhandene Plugins anzeigen: bin/logwarden-plugins --list',
+        );
+    }
+
+    $logger->info('Syslog-Plugins geladen', [
+        'plugins'     => implode(', ', array_map(
+            static fn (LogWarden\Plugin\PluginInterface $p): string => $p::key(),
+            array_filter($plugins->all(), static fn (LogWarden\Plugin\PluginInterface $p): bool
+                => in_array('syslog', $p::transports(), true)),
+        )),
+        'normalizers' => count($normalizers),
+    ]);
+
     $server = new SyslogServer(
         settings:    $syslog,
         writer:      $writer,
         logger:      $logger,
-        normalizers: [new FortigateNormalizer()],
+        normalizers: $normalizers,
         peerFilter:  new PeerFilter(is_array($allowFrom) ? $allowFrom : []),
     );
 

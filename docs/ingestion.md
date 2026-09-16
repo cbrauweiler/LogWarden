@@ -42,10 +42,16 @@ Bricht nur die Verbindung weg, während der Server weiterläuft, verbindet sich
 > sonst wäre der Reconnect genau dann deaktiviert, wenn er gebraucht wird.
 > Siehe `tests/Unit/DbReconnectTest.php`.
 
-## FortiGate-Syslog
+## Syslog
 
 `bin/logwarden-syslogd`, ein Prozess mit `stream_select`-Schleife über
 UDP-, TCP- und TLS-Listener.
+
+Welche Hersteller er versteht, entscheidet nicht dieser Prozess, sondern was
+unter `plugins/` liegt. Jede eingehende Nachricht wird den Normalizern der
+installierten Plugins der Reihe nach angeboten, der erste Treffer gewinnt —
+weshalb ein zu großzügiges `supports()` die Daten der anderen verschluckt.
+Siehe [docs/plugins.md](plugins.md).
 
 ### Framing
 
@@ -65,7 +71,7 @@ der mitten im Handshake stehen bleibt, blockiert damit nicht die Ingestion aller
 anderen. Ist `syslog.tls.ca_file` gesetzt, werden Client-Zertifikate verlangt —
 erst damit ist Syslog wirklich authentifiziert.
 
-### Erkannte Formate
+### Erkannte Formate (Plugin `fortigate`)
 
 | Format | Erkennung |
 |---|---|

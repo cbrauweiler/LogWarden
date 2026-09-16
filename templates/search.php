@@ -16,13 +16,9 @@ use LogWarden\Web\View;
 $e   = static fn (mixed $v): string => View::e($v);
 $num = static fn (int|float $v): string => View::number($v);
 
-$seriesColor = [
-    'ad'             => '--series-1',
-    'dns'            => '--series-2',
-    'dhcp'           => '--series-3',
-    'fortigate_vpn'  => '--series-4',
-    'fortigate_auth' => '--series-5',
-];
+// Aus der Registry, damit ein neu installiertes Plugin seine eigene Farbe
+// mitbringt, statt hier nachgetragen werden zu müssen.
+$seriesColor = LogWarden\Event\SourceType::colors();
 
 $resultLabels = ['success' => 'Erfolg', 'fail' => 'Fehler', 'info' => 'Info'];
 

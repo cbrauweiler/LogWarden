@@ -202,7 +202,7 @@ final class SourceRepository
         if ($existing !== null) {
             $this->db->execute(
                 'UPDATE ingest_sources
-                    SET collector = ?, source_type = ?::source_type_t, target_host = ?,
+                    SET collector = ?, source_type = ?, target_host = ?,
                         enabled = ?, config = ?::jsonb, secret_ref = coalesce(?, secret_ref),
                         username = ?, auth_mode = ?, poll_interval_s = ?, updated_at = now()
                   WHERE id = ?',
@@ -224,7 +224,7 @@ final class SourceRepository
             'INSERT INTO ingest_sources
                  (name, collector, source_type, target_host, enabled, config,
                   secret_ref, username, auth_mode, poll_interval_s)
-             VALUES (?, ?, ?::source_type_t, ?, ?, ?::jsonb, ?, ?, ?, ?)
+             VALUES (?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?)
              RETURNING id',
             [
                 $fields['name'], $fields['collector'], $fields['source_type'], $fields['target_host'],

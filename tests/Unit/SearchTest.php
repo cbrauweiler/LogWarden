@@ -117,7 +117,7 @@ function searchFixture(Db $db): void
         $db->execute(
             "INSERT INTO events (ts, source_type, source_host, event_type, username, src_ip, dst_ip,
                                  result, raw_message, details, dedup_key)
-             VALUES (now() - make_interval(mins => ?), ?::source_type_t, ?, ?, ?, ?::inet, ?::inet,
+             VALUES (now() - make_interval(mins => ?), ?, ?, ?, ?, ?::inet, ?::inet,
                      ?::event_result_t, ?, '{}'::jsonb, ?)",
             [$min, $type, $host, $event, $user, $src, $dst, $result, $raw, SQ_PREFIX . $i],
         );

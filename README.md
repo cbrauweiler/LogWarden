@@ -104,6 +104,27 @@ berechnet LogWarden nach WCAG die Schriftfarbe für Buttons und dunkelt die Farb
 für Fließtext ab, bis sie 4,5:1 erreicht. Die Einstellungsseite zeigt die
 Kontrastwerte an.
 
+### Quellen als Plugins, Windows fest eingebaut
+
+Windows-Logs gehören zum Kern: AD, DNS und DHCP teilen sich den
+WinRM-Collector, sie sind der Grund, warum das Werkzeug in einer
+Windows-Umgebung existiert, und eine Plugin-Grenze zwischen ihnen wäre eine
+Grenze, die nie jemand überquert.
+
+Alles andere ist ein Plugin — ein Verzeichnis unter `plugins/`, kopiert und
+fertig. FortiGate und Cisco ASA liegen bei; weitere Hersteller kommen dazu,
+ohne den Kern anzufassen.
+
+Der Punkt daran ist nicht die Ordnerstruktur, sondern die **Rolle**: Jeder
+Quelltyp sagt, *was* er ist (`vpn`, `auth`, `directory`, …), nicht nur von
+wem er stammt. Die Korrelationsregel fragt deshalb nach „einem VPN-Login,
+gefolgt von Anmeldefehlern im Verzeichnis" statt nach `fortigate_vpn`. Wer das
+Cisco-Plugin installiert, ist sofort in jeder bestehenden Regel dabei.
+
+Ein Plugin öffnet keine Sockets, stellt keine Abfragen und sieht die
+Konfiguration nicht — es bekommt eine Rohzeile und sagt, was sie bedeutet.
+Details in [docs/plugins.md](docs/plugins.md).
+
 ### Windows-Logs per WinRM
 
 Kein Agent auf den Domain Controllern: LogWarden holt die Ereignisprotokolle
@@ -166,6 +187,7 @@ bin/logwarden-keygen          # legt config/secret.key mit Modus 0600 an
 
 # 5. Schema und Partitionen
 bin/logwarden-migrate
+bin/logwarden-plugins --sync   # Quelltypen der installierten Plugins eintragen
 bin/logwarden-maintenance
 
 # 6. Erstes Administratorkonto (fragt das Passwort ohne Echo ab)
@@ -200,6 +222,20 @@ angelegte lokale Konto — die AD-Anbindung lässt sich danach in Ruhe unter
 
 ---
 
+## Weitere Quellen anbinden
+
+Quellen anderer Hersteller kommen als Plugin — ein Verzeichnis unter
+`plugins/`, das man hineinkopiert. Mitgeliefert sind FortiGate und Cisco ASA.
+
+```bash
+bin/logwarden-plugins --list            # installierte Plugins und Quelltypen
+bin/logwarden-plugins --test=cisco-asa  # Fixtures durch die Normalizer schicken
+bin/logwarden-plugins --sync            # Quelltypen in die Datenbank schreiben
+systemctl restart logwarden-syslogd
+```
+
+Wie man ein eigenes schreibt, steht in [docs/plugins.md](docs/plugins.md).
+
 ## FortiGate anbinden
 
 Auf der FortiGate:
@@ -227,13 +263,12 @@ logger -n 127.0.0.1 -P 5514 -d \
   'date=2026-09-15 time=10:01:15 devname="FGT-60F-HQ" logid="0101039426" type="event" subtype="vpn" action="ssl-login-fail" remip=198.51.100.44 user="CORP\asmith"'
 
 # Die mitgelieferten Fixtures per netcat
-grep -v '^#' tests/fixtures/fortigate-native.log | nc -q1 127.0.0.1 5514
+grep -v '^#' plugins/fortigate/fixtures/fortigate-native.log | nc -q1 127.0.0.1 5514
 ```
 
 Welche Events erkannt und welche verworfen werden, steht in
-`src/Ingest/Fortigate/FortigateNormalizer.php`: gespeichert werden VPN
-(`logid 0101…`) und Authentifizierung (`logid 0102…`), Traffic- und UTM-Logs
-werden verworfen.
+`plugins/fortigate/`: gespeichert werden VPN (`logid 0101…`) und
+Authentifizierung (`logid 0102…`), Traffic- und UTM-Logs werden verworfen.
 
 ---
 
@@ -246,13 +281,15 @@ db/           Migrationen und Seed-Daten
 src/
   Core/       Config, Db, Logger
   Security/   Anmeldung, Rollen, Sessions, SecretBox (libsodium)
-  Event/      Event-DTO, Batch-Writer, Normalizer-Contract
-  Ingest/     Syslog/, Fortigate/, Winrm/, Windows/, Dhcp/
+  Event/      Event-DTO, Batch-Writer, Normalizer-Contract, Quelltypen
+  Plugin/     Plugin-Vertrag, Registry, Quelltyp-Abgleich
+  Ingest/     Syslog/, Winrm/, Windows/, Dhcp/
   Rules/      Regel-Interface, Registry, Engine und eingebaute Regeln
   Alerting/   Alert-Persistenz und Abfragen
   Notify/     Teams-Webhook
   Search/     Query-Bau und Dashboard-Aggregate
   Web/        Router, Controller, Branding, Farbmathematik, Charts
+plugins/      Quellen fremder Hersteller (fortigate/, cisco-asa/)
 public/       Einziger DocumentRoot
 templates/    PHP-Templates
 deploy/       systemd-Units, nginx-Beispiel, windows/ (JEA-Konfiguration)
@@ -339,7 +376,7 @@ am Ende von [docs/winrm.md](docs/winrm.md).
 | Schritt | Status |
 |---|---|
 | Fundament, Schema, Partitionierung | fertig |
-| FortiGate-Syslog-Ingestion (UDP/TCP/TLS, CEF + key=value) | fertig |
+| Syslog-Ingestion (UDP/TCP/TLS, CEF + key=value) | fertig |
 | Design-System und Corporate Identity | fertig |
 | Dashboard | fertig |
 | Rule-Engine und die drei Startregeln | fertig |
@@ -348,7 +385,7 @@ am Ende von [docs/winrm.md](docs/winrm.md).
 | Teams-Benachrichtigung ([Doku](docs/notifications.md)) | fertig |
 | Anmeldung, Rollen und Benutzerverwaltung ([Doku](docs/auth.md)) | fertig |
 | WinRM-Collector für AD-Sicherheitsereignisse ([Doku](docs/winrm.md)) | fertig |
-| **Docker-Deployment** (Compose für App, PostgreSQL, Syslog-Ports) | **offen** |
+| Quellen als Plugins, FortiGate und Cisco ASA ([Doku](docs/plugins.md)) | fertig |
 | DNS: Audit-Kanal — Collector steht, eigener Normalizer fehlt ([Strategie](docs/dns.md)) | offen |
 | DHCP-CSV-Import | offen |
 | CI-Pipeline: Lint und Tests bei jedem Push | offen |
@@ -358,15 +395,6 @@ am Ende von [docs/winrm.md](docs/winrm.md).
 | DNS: optionale Analytic-Verdichtung ([Strategie](docs/dns.md)) | offen |
 
 ### Was als Nächstes sinnvoll ist
-
-**Docker** zuerst, weil es alles darunter billiger macht: eine
-`compose.yml` mit App, PostgreSQL und den Syslog-Ports ersetzt die halbe
-Installationsanleitung, und die CI-Pipeline kann denselben Aufbau verwenden,
-statt ihn ein zweites Mal zu beschreiben. Zu klären ist dabei, wie `config/`
-und `var/spool/` als Volumes liegen, wie der Master-Key aus
-`bin/logwarden-keygen` hineinkommt, ohne im Image zu landen, und ob der
-Syslog-Listener im Host-Netz läuft — UDP-Quelladressen hinter Dockers NAT
-sind sonst alle die des Gateways, und `syslog.allow_from` wäre wirkungslos.
 
 **DNS-Audit** ist der größte Nutzen pro Aufwand: der Collector steht bereits,
 es fehlt ein eigener Normalizer. Aktuell liefe der Kanal durch den

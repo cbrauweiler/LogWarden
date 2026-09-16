@@ -169,7 +169,7 @@ final class SearchController
         }
 
         $ftsDays = (int) $this->db->fetchValue(
-            'SELECT max(fts_days) FROM retention_policies',
+            'SELECT max(fts_days) FROM source_types',
             [],
             14,
         );

@@ -73,7 +73,7 @@ final class SearchCriteria
             $from = $to->modify('-' . self::PRESETS[$preset]['minutes'] . ' minutes');
         }
 
-        $valid  = array_map(static fn (SourceType $t): string => $t->value, SourceType::cases());
+        $valid  = array_keys(SourceType::labels());
         $source = $params['source'] ?? [];
         $source = is_array($source) ? $source : [$source];
         $source = array_values(array_intersect(array_map('strval', $source), $valid));
@@ -160,7 +160,9 @@ final class SearchCriteria
 
         if ($this->sourceTypes !== []) {
             $labels = array_map(
-                static fn (string $t): string => SourceType::from($t)->label(),
+                // ofStored, not of: a filter kept in a bookmarked link must
+                // still render after the plugin that defined it was removed.
+                static fn (string $t): string => SourceType::ofStored($t)->label(),
                 $this->sourceTypes,
             );
             $active[] = ['key' => 'source', 'label' => 'Quelle', 'value' => implode(', ', $labels)];

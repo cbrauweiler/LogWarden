@@ -1,0 +1,187 @@
+#!/usr/bin/env php
+<?php
+/**
+ * Shows and verifies the installed source plugins.
+ *
+ * Usage: bin/logwarden-plugins [--list] [--sync] [--dry-run] [--test=KEY]
+ *
+ * A plugin is installed by copying its directory into plugins/ and removed by
+ * deleting it; there is nothing to register. `--sync` only writes the labels,
+ * colours and roles into the database so that SQL can join them.
+ */
+
+declare(strict_types=1);
+
+require dirname(__DIR__) . '/src/bootstrap.php';
+
+use LogWarden\Core\Config;
+use LogWarden\Core\Db;
+use LogWarden\Core\Logger;
+use LogWarden\Event\SourceType;
+use LogWarden\Plugin\PluginRegistry;
+use LogWarden\Plugin\SourceTypeSync;
+
+$options = getopt('', ['config::', 'list', 'sync', 'dry-run', 'test::', 'help']);
+
+if (isset($options['help'])) {
+    fwrite(STDOUT, <<<TXT
+    Usage: logwarden-plugins [options]
+
+      --list          installierte Plugins und ihre Quelltypen
+      --sync          Quelltypen in die Datenbank schreiben
+      --dry-run       mit --sync: nur zeigen, was sich ändern würde
+      --test=KEY      die Fixtures eines Plugins durch seine Normalizer schicken
+      --config=PATH   alternative Konfigurationsdatei
+
+    TXT);
+    exit(0);
+}
+
+try {
+    $registry = PluginRegistry::default();
+
+    // --- test ---------------------------------------------------------------
+    if (is_string($options['test'] ?? null) && $options['test'] !== '') {
+        $key      = $options['test'];
+        $plugin   = $registry->get($key);
+        $manifest = $registry->manifest($key);
+        $files    = glob($manifest->directory . '/fixtures/*') ?: [];
+
+        if ($files === []) {
+            fwrite(STDERR, "Keine Fixtures in {$manifest->directory}/fixtures/\n");
+            exit(1);
+        }
+
+        $total = 0;
+        $kept  = 0;
+
+        foreach ($files as $file) {
+            fwrite(STDOUT, "\n" . basename($file) . "\n");
+
+            foreach (file($file) ?: [] as $line) {
+                $line = trim($line);
+                if ($line === '' || $line[0] === '#') {
+                    continue;
+                }
+
+                $total++;
+                $events = [];
+
+                foreach ($plugin->normalizers() as $normalizer) {
+                    if ($normalizer->supports($line)) {
+                        $events = $normalizer->normalize($line, ['peer' => '127.0.0.1']);
+                        break;
+                    }
+                }
+
+                if ($events === []) {
+                    fwrite(STDOUT, sprintf("  %-14s %s\n", 'verworfen', mb_strimwidth($line, 0, 88, '…')));
+                    continue;
+                }
+
+                foreach ($events as $event) {
+                    $kept++;
+                    fwrite(STDOUT, sprintf(
+                        "  %-14s %-16s %-8s %-12s %s\n",
+                        $event->eventType,
+                        $event->sourceType->value,
+                        $event->result?->value ?? '-',
+                        $event->username ?? '-',
+                        $event->details['label'] ?? '',
+                    ));
+                }
+            }
+        }
+
+        fwrite(STDOUT, sprintf("\n%d Zeilen, %d Events, %d verworfen.\n", $total, $kept, $total - $kept));
+        exit(0);
+    }
+
+    // --- sync ---------------------------------------------------------------
+    if (isset($options['sync'])) {
+        $config = Config::load(is_string($options['config'] ?? null) ? $options['config'] : null);
+        $logger = Logger::fromConfig($config, 'plugins');
+        $db     = Db::fromConfig($config, $logger);
+
+        $dryRun = isset($options['dry-run']);
+        $result = (new SourceTypeSync($db))->run($dryRun);
+
+        foreach (['inserted' => 'neu', 'updated' => 'aktualisiert', 'revived' => 'wieder vorhanden', 'orphaned' => 'verwaist'] as $field => $label) {
+            if ($result[$field] !== []) {
+                fwrite(STDOUT, sprintf("%-18s %s\n", $label . ':', implode(', ', $result[$field])));
+            }
+        }
+
+        if (array_filter($result) === []) {
+            fwrite(STDOUT, "Keine Änderungen.\n");
+        }
+
+        foreach ((new SourceTypeSync($db))->orphansWithData() as $orphan) {
+            fwrite(STDOUT, sprintf(
+                "  Achtung: %s trägt noch %s Events, das Plugin \"%s\" ist aber nicht installiert.\n",
+                $orphan['key'],
+                number_format((int) $orphan['events'], 0, ',', '.'),
+                $orphan['plugin'] ?? '?',
+            ));
+        }
+
+        if ($dryRun) {
+            fwrite(STDOUT, "(Probelauf, nichts geschrieben)\n");
+        }
+
+        exit(0);
+    }
+
+    // --- list (default) -----------------------------------------------------
+    $manifests = $registry->manifests();
+
+    if ($manifests === []) {
+        fwrite(STDOUT, "Kein Plugin installiert. Plugins liegen als Verzeichnis unter plugins/.\n");
+    }
+
+    foreach ($manifests as $key => $manifest) {
+        fwrite(STDOUT, sprintf("%s  %s %s\n", $manifest->name, $key, $manifest->version));
+
+        if ($manifest->description !== '') {
+            fwrite(STDOUT, '  ' . $manifest->description . "\n");
+        }
+
+        try {
+            $plugin = $registry->get($key);
+            fwrite(STDOUT, '  Transporte:  ' . implode(', ', $plugin::transports()) . "\n");
+
+            foreach ($plugin::sourceTypes() as $definition) {
+                fwrite(STDOUT, sprintf(
+                    "  Quelltyp:    %-16s %-12s %s Tage Aufbewahrung\n",
+                    $definition->key,
+                    $definition->role,
+                    $definition->keepDays,
+                ));
+            }
+        } catch (Throwable $e) {
+            fwrite(STDOUT, '  FEHLER: ' . $e->getMessage() . "\n");
+        }
+
+        fwrite(STDOUT, "\n");
+    }
+
+    $core = array_filter(
+        SourceType::definitions(),
+        static fn (string $k): bool => !isset(PluginRegistry::default()->sourceTypeOwners()[$k]),
+        ARRAY_FILTER_USE_KEY,
+    );
+
+    fwrite(STDOUT, "Fest eingebaut (kein Plugin):\n");
+    foreach ($core as $key => $definition) {
+        fwrite(STDOUT, sprintf("  %-16s %-12s %s\n", $key, $definition->role, $definition->label));
+    }
+
+    foreach ($registry->errors() as $error) {
+        fwrite(STDERR, "\nFEHLER: " . $error . "\n");
+    }
+
+    exit($registry->errors() === [] ? 0 : 1);
+} catch (Throwable $e) {
+    fwrite(STDERR, 'logwarden-plugins: ' . $e->getMessage() . "\n");
+    exit(1);
+}

@@ -1,0 +1,11 @@
+{
+    "key": "cisco-asa",
+    "name": "Cisco ASA / Firepower Threat Defense",
+    "vendor": "Cisco",
+    "version": "1.0.0",
+    "description": "VPN- und Authentifizierungsmeldungen per Syslog, erkannt an der ASA-Meldungsnummer.",
+    "namespace": "LogWarden\\Plugin\\CiscoAsa",
+    "class": "CiscoAsaPlugin",
+    "docs": "README.md",
+    "author": "LogWarden"
+}

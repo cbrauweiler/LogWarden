@@ -277,7 +277,7 @@ test('machine and system accounts are dropped by default but can be kept', funct
     $lines = fixtureLines('ad-security.ndjson');
 
     $strict = new AdNormalizer('DC01.corp.local');
-    $loose  = new AdNormalizer('DC01.corp.local', 'Security', SourceType::Ad, true, true);
+    $loose  = new AdNormalizer('DC01.corp.local', 'Security', SourceType::of('ad'), true, true);
 
     $machine   = firstLineWith($lines, '"TargetUserName":"WS-ASMITH$"');
     $anonymous = firstLineWith($lines, 'ANONYMOUS LOGON');

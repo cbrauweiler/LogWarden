@@ -14,6 +14,8 @@ use LogWarden\Ingest\Windows\AdEventCatalog;
 use LogWarden\Ingest\Winrm\EventLogQuery;
 use LogWarden\Ingest\Winrm\WinrmClient;
 use LogWarden\Ingest\Winrm\WinrmShell;
+use LogWarden\Plugin\PluginRegistry;
+use LogWarden\Plugin\SourceTypeSync;
 use LogWarden\Security\SecretBox;
 use LogWarden\Web\Csrf;
 use LogWarden\Web\Response;
@@ -54,6 +56,8 @@ final class SourceController
             'catalogue'  => AdEventCatalog::grouped(),
             'defaultIds' => AdEventCatalog::defaultIds(),
             'runs'       => $this->recentRuns(),
+            'plugins'    => $this->plugins(),
+            'orphans'    => (new SourceTypeSync($this->db))->orphansWithData(),
             'edit'       => $edit,
             'flash'      => $flash,
             'errors'     => $errors,
@@ -146,7 +150,7 @@ final class SourceController
         $id = $this->sources->upsert([
             'name'            => $name,
             'collector'       => 'winrm',
-            'source_type'     => SourceType::from($sourceType)->value,
+            'source_type'     => SourceType::of($sourceType)->value,
             'target_host'     => $host,
             'enabled'         => !empty($_POST['enabled']),
             'config'          => $config,
@@ -321,6 +325,56 @@ final class SourceController
         }
 
         return $source;
+    }
+
+    /**
+     * The installed plugins, with what each contributes.
+     *
+     * @return array{plugins: list<array<string, mixed>>, errors: list<string>}
+     */
+    private function plugins(): array
+    {
+        $registry = PluginRegistry::default();
+        $counts   = [];
+
+        foreach ($this->db->fetchAll(
+            "SELECT source_type, count(*) AS c
+               FROM events
+              WHERE ts > now() - interval '30 days'
+              GROUP BY source_type",
+        ) as $row) {
+            $counts[$row['source_type']] = (int) $row['c'];
+        }
+
+        $out = [];
+
+        foreach ($registry->manifests() as $key => $manifest) {
+            $entry = $manifest->toArray();
+            $entry['sourceTypes'] = [];
+            $entry['error']       = null;
+
+            try {
+                $plugin = $registry->get($key);
+                $entry['transports'] = $plugin::transports();
+
+                foreach ($plugin::sourceTypes() as $definition) {
+                    $entry['sourceTypes'][] = [
+                        'key'    => $definition->key,
+                        'label'  => $definition->label,
+                        'role'   => $definition->role,
+                        'color'  => $definition->color,
+                        'events' => $counts[$definition->key] ?? 0,
+                    ];
+                }
+            } catch (Throwable $e) {
+                $entry['error']      = $e->getMessage();
+                $entry['transports'] = [];
+            }
+
+            $out[] = $entry;
+        }
+
+        return ['plugins' => $out, 'errors' => $registry->errors()];
     }
 
     /** @return array<int, list<array<string, mixed>>> */

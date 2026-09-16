@@ -63,7 +63,9 @@ try {
     // Partitions hold mixed source types, so a partition may only be dropped
     // once it is older than the most generous policy. Rows that outlive their
     // own policy inside a surviving partition are deleted per source type.
-    $policies = $db->fetchAll('SELECT source_type, keep_days, fts_days FROM retention_policies');
+    // retention_policies ging in source_types auf, siehe Migration 0007 —
+    // eine Tabelle pro Quelltyp statt zweier, die auseinanderlaufen können.
+    $policies = $db->fetchAll('SELECT key AS source_type, keep_days, fts_days FROM source_types');
     $maxKeep  = 0;
     $maxFts   = 0;
 
@@ -124,7 +126,7 @@ try {
             }
 
             $deleted = $db->execute(
-                'DELETE FROM events WHERE source_type = ?::source_type_t AND ts < ?::timestamptz',
+                'DELETE FROM events WHERE source_type = ? AND ts < ?::timestamptz',
                 [$policy['source_type'], $sourceCutoff],
             );
 

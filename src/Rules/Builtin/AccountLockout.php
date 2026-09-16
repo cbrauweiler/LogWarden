@@ -57,7 +57,9 @@ final class AccountLockout implements RuleInterface
                FROM events
               WHERE ts >= ?::timestamptz
                 AND ts <  ?::timestamptz
-                AND source_type = 'ad'
+                -- Any directory, not specifically Active Directory: the event
+                -- ids stay configurable, the vendor does not belong in the query.
+                AND source_type IN (SELECT key FROM source_types WHERE role = 'directory')
                 AND event_type = ANY(?::text[])
                 AND username IS NOT NULL
               ORDER BY ts DESC",

@@ -283,7 +283,7 @@ final class EventQuery
         ];
 
         if ($criteria->sourceTypes !== []) {
-            $where[]  = 'e.source_type = ANY(?::source_type_t[])';
+            $where[]  = 'e.source_type = ANY(?::text[])';
             $params[] = self::pgArray($criteria->sourceTypes);
         }
 

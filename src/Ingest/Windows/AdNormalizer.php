@@ -40,13 +40,18 @@ final class AdNormalizer implements NormalizerInterface
      */
     private const SUBJECT_IS_PRINCIPAL = [4672, 1102, 4719, 4739, 4713, 4716, 4906];
 
+    private readonly SourceType $sourceType;
+
     public function __construct(
         private readonly string $sourceHost,
         private readonly string $channel = 'Security',
-        private readonly SourceType $sourceType = SourceType::Ad,
+        ?SourceType $sourceType = null,
         private readonly bool $includeComputerAccounts = false,
         private readonly bool $includeSystemAccounts = false,
     ) {
+        // Not a default parameter value: SourceType::of() is a method call and
+        // the set it validates against is only known once the plugins are read.
+        $this->sourceType = $sourceType ?? SourceType::of('ad');
     }
 
     public function supports(string $raw, array $context = []): bool

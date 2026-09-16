@@ -6,20 +6,12 @@ namespace LogWarden\Web\Controller;
 
 use LogWarden\Alerting\AlertQuery;
 use LogWarden\Search\EventStats;
+use LogWarden\Event\SourceType;
 use LogWarden\Web\Response;
 use LogWarden\Web\View;
 
 final class DashboardController
 {
-    /** Fixed assignment: a source keeps its colour however the filters change. */
-    private const SERIES_COLORS = [
-        'ad'             => '--series-1',
-        'dns'            => '--series-2',
-        'dhcp'           => '--series-3',
-        'fortigate_vpn'  => '--series-4',
-        'fortigate_auth' => '--series-5',
-    ];
-
     public function __construct(
         private readonly EventStats $stats,
         private readonly AlertQuery $alerts,
@@ -44,7 +36,9 @@ final class DashboardController
             'openAlerts'    => $this->alerts->list(['status' => 'new', 'limit' => 5]),
             'volume'       => $volume,
             'labels'       => EventStats::sourceLabels(),
-            'colors'       => self::SERIES_COLORS,
+            // From the registry, not a constant: a plugin declares its own
+            // colour, and a source keeps it however the filters change.
+            'colors'       => SourceType::colors(),
             'topFailing'   => $this->stats->topFailingUsers($hours),
             'recent'       => $this->stats->recentEvents(),
             'ingestHealth' => $this->stats->ingestHealth(),

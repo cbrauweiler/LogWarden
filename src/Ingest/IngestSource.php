@@ -38,7 +38,7 @@ final class IngestSource
             id:                  (int) $row['id'],
             name:                (string) $row['name'],
             collector:           (string) $row['collector'],
-            sourceType:          SourceType::from((string) $row['source_type']),
+            sourceType:          SourceType::ofStored((string) $row['source_type']),
             targetHost:          $row['target_host'] === null ? null : (string) $row['target_host'],
             enabled:             (bool) $row['enabled'],
             config:              self::json($row['config'] ?? null),

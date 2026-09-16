@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace LogWarden\Ingest\Fortigate;
+namespace LogWarden\Plugin\Fortigate;
 
 /**
  * Parser for FortiOS native syslog, which is a flat list of key=value pairs:

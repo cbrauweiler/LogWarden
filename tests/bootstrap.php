@@ -66,6 +66,17 @@ final class TestRunner
     }
 }
 
+// Plugin classes live outside src/ and are not covered by the autoloader.
+// Loading them here means a test can use them by name, exactly as the syslog
+// daemon does after asking the registry.
+foreach (array_keys(LogWarden\Plugin\PluginRegistry::default()->manifests()) as $pluginKey) {
+    try {
+        LogWarden\Plugin\PluginRegistry::default()->get($pluginKey);
+    } catch (Throwable $e) {
+        fwrite(STDERR, "Plugin {$pluginKey} nicht ladbar: " . $e->getMessage() . "\n");
+    }
+}
+
 function test(string $name, callable $fn): void
 {
     TestRunner::$tests[] = [$name, $fn];
@@ -108,13 +119,20 @@ function assertCount(int $expected, array $actual, string $message = ''): void
 
 function fixture(string $name): string
 {
-    $path = __DIR__ . '/fixtures/' . $name;
+    $candidates = array_merge(
+        [__DIR__ . '/fixtures/' . $name],
+        // Plugins keep their sample data next to their code, so that deleting
+        // the directory takes the fixtures with it.
+        glob(LW_ROOT . '/plugins/*/fixtures/' . $name) ?: [],
+    );
 
-    if (!is_file($path)) {
-        throw new RuntimeException("Fixture {$name} not found");
+    foreach ($candidates as $path) {
+        if (is_file($path)) {
+            return (string) file_get_contents($path);
+        }
     }
 
-    return (string) file_get_contents($path);
+    throw new RuntimeException("Fixture {$name} not found");
 }
 
 /** @return list<string> */

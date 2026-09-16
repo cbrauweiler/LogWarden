@@ -60,7 +60,7 @@ final class RuleContext
         $params = [$this->windowStart(), $this->windowEnd()];
 
         if (!empty($filter['source_types'])) {
-            $where[]  = 'source_type = ANY(?::source_type_t[])';
+            $where[]  = 'source_type = ANY(?::text[])';
             $params[] = self::pgArray($filter['source_types']);
         }
 

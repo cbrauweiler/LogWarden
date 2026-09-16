@@ -5,6 +5,8 @@
  * @var array $catalogue
  * @var array $defaultIds
  * @var array $runs
+ * @var array $plugins
+ * @var array $orphans
  * @var ?\LogWarden\Ingest\IngestSource $edit
  * @var array $flash
  * @var array $errors
@@ -72,6 +74,98 @@ $ago = static function (?string $timestamp): string {
         </div>
     </div>
 <?php endif; ?>
+
+<section class="card">
+    <div class="card__head">
+        <div>
+            <h2>Installierte Plugins</h2>
+            <p class="card__hint">
+                Quellen anderer Hersteller kommen als Plugin: ein Verzeichnis unter
+                <code>plugins/</code>, kopiert und fertig — es gibt nichts zu registrieren.
+                Windows-Logs sind fest eingebaut und brauchen kein Plugin.
+                Anleitung: <code>docs/plugins.md</code>.
+            </p>
+        </div>
+    </div>
+
+    <div class="card__body--flush">
+        <?php if ($plugins['plugins'] === []): ?>
+            <p class="table__empty">
+                Kein Plugin installiert — der Syslog-Listener würde jede Nachricht verwerfen.
+            </p>
+        <?php else: ?>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th scope="col">Plugin</th>
+                        <th scope="col">Transport</th>
+                        <th scope="col">Quelltypen</th>
+                        <th scope="col" class="num">Events 30 Tage</th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php foreach ($plugins['plugins'] as $plugin): ?>
+                    <tr>
+                        <td>
+                            <strong><?= $e($plugin['name']) ?></strong>
+                            <br><span class="muted"><?= $e($plugin['vendor']) ?> · <?= $e($plugin['version']) ?></span>
+                            <?php if ($plugin['error'] !== null): ?>
+                                <br><span class="badge badge--fail"><span class="badge__dot"></span>Fehler</span>
+                            <?php endif; ?>
+                        </td>
+                        <td class="muted"><?= $e(implode(', ', $plugin['transports'])) ?></td>
+                        <td>
+                            <?php foreach ($plugin['sourceTypes'] as $type): ?>
+                                <span class="chip">
+                                    <span class="chip__swatch" style="background:var(<?= $e($type['color'] ?? '--ink-3') ?>)"></span>
+                                    <?= $e($type['label']) ?>
+                                    <span class="muted"><?= $e($type['role']) ?></span>
+                                </span>
+                            <?php endforeach; ?>
+                        </td>
+                        <td class="num">
+                            <?php foreach ($plugin['sourceTypes'] as $type): ?>
+                                <?= $e($num($type['events'])) ?><br>
+                            <?php endforeach; ?>
+                        </td>
+                    </tr>
+                    <?php if ($plugin['error'] !== null): ?>
+                        <tr>
+                            <td colspan="4" style="background:var(--surface-sunken)">
+                                <p class="muted" style="margin:0"><?= $e($plugin['error']) ?></p>
+                            </td>
+                        </tr>
+                    <?php endif; ?>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        <?php endif; ?>
+    </div>
+
+    <?php if ($plugins['errors'] !== [] || $orphans !== []): ?>
+        <div class="card__body">
+            <?php foreach ($plugins['errors'] as $error): ?>
+                <div class="notice notice--warning" role="alert">
+                    <svg class="notice__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                         stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
+                    <div><?= $e($error) ?></div>
+                </div>
+            <?php endforeach; ?>
+
+            <?php foreach ($orphans as $orphan): ?>
+                <div class="notice notice--warning" role="status">
+                    <svg class="notice__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                         stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
+                    <div>
+                        <?= $e($orphan['key']) ?> trägt noch <?= $e($num((int) $orphan['events'])) ?> Events,
+                        das Plugin <code><?= $e($orphan['plugin'] ?? '?') ?></code> ist aber nicht mehr
+                        installiert. Die Events bleiben durchsuchbar; neue kommen keine mehr dazu.
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        </div>
+    <?php endif; ?>
+</section>
 
 <section class="card">
     <div class="card__head">

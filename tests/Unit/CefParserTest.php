@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use LogWarden\Ingest\Fortigate\CefParser;
+use LogWarden\Plugin\Fortigate\CefParser;
 
 test('CEF header fields are split on unescaped pipes', function (): void {
     $parsed = (new CefParser())->parse('CEF:0|Fortinet|Fortigate|v7.4.4|0101039426|ssl-login-fail|8|src=1.2.3.4');
