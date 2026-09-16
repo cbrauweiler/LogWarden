@@ -348,9 +348,35 @@ am Ende von [docs/winrm.md](docs/winrm.md).
 | Teams-Benachrichtigung ([Doku](docs/notifications.md)) | fertig |
 | Anmeldung, Rollen und Benutzerverwaltung ([Doku](docs/auth.md)) | fertig |
 | WinRM-Collector für AD-Sicherheitsereignisse ([Doku](docs/winrm.md)) | fertig |
-| DNS: Audit-Kanal über denselben Collector ([Strategie](docs/dns.md)) | offen |
+| **Docker-Deployment** (Compose für App, PostgreSQL, Syslog-Ports) | **offen** |
+| DNS: Audit-Kanal — Collector steht, eigener Normalizer fehlt ([Strategie](docs/dns.md)) | offen |
 | DHCP-CSV-Import | offen |
+| CI-Pipeline: Lint und Tests bei jedem Push | offen |
+| Verifikation des WinRM-Pfads gegen einen echten Domain Controller | offen |
+| JEA-Endpunkt ansteuern (`deploy/windows/` liegt bereit) | offen |
+| Gespeicherte Suchen — Tabelle existiert, Oberfläche fehlt | offen |
 | DNS: optionale Analytic-Verdichtung ([Strategie](docs/dns.md)) | offen |
+
+### Was als Nächstes sinnvoll ist
+
+**Docker** zuerst, weil es alles darunter billiger macht: eine
+`compose.yml` mit App, PostgreSQL und den Syslog-Ports ersetzt die halbe
+Installationsanleitung, und die CI-Pipeline kann denselben Aufbau verwenden,
+statt ihn ein zweites Mal zu beschreiben. Zu klären ist dabei, wie `config/`
+und `var/spool/` als Volumes liegen, wie der Master-Key aus
+`bin/logwarden-keygen` hineinkommt, ohne im Image zu landen, und ob der
+Syslog-Listener im Host-Netz läuft — UDP-Quelladressen hinter Dockers NAT
+sind sonst alle die des Gateways, und `syslog.allow_from` wäre wirkungslos.
+
+**DNS-Audit** ist der größte Nutzen pro Aufwand: der Collector steht bereits,
+es fehlt ein eigener Normalizer. Aktuell liefe der Kanal durch den
+AD-Normalizer und ergäbe Zeilen wie „Ereignis 515" statt „Record angelegt".
+Die Event-IDs ziehen wir laut Strategie beim ersten Pull aus dem Kanal,
+statt sie zu raten.
+
+**Ein Testlauf gegen einen echten DC** gehört vor die Inbetriebnahme, nicht
+danach — hier gab es kein Windows-System, siehe das Ende von
+[docs/winrm.md](docs/winrm.md).
 
 ### Zwei bekannte Fallstricke
 
