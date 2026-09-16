@@ -120,7 +120,8 @@ final class AlertQuery
             "SELECT e.ts, e.id, e.source_type::text AS source_type, e.source_host,
                     e.event_type, e.username, host(e.src_ip) AS src_ip,
                     e.result::text AS result, e.raw_message,
-                    to_char(e.ts, 'DD.MM. HH24:MI:SS') AS ts_label
+                    to_char(e.ts, 'DD.MM. HH24:MI:SS') AS ts_label,
+                    to_char(e.ts, 'YYYY-MM-DD\"T\"HH24:MI:SS.USOF') AS ts_iso
                FROM alert_events ae
                JOIN events e ON e.ts = ae.event_ts AND e.id = ae.event_id
               WHERE ae.alert_id = ?

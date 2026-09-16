@@ -167,7 +167,11 @@ $badge = static function (?string $result) use ($e): string {
                     <tbody>
                     <?php foreach ($topFailing as $row): ?>
                         <tr>
-                            <td class="mono"><?= $e($row['username']) ?></td>
+                            <td class="mono">
+                                <a href="/search?<?= $e(http_build_query(['username' => $row['username'], 'result' => 'fail', 'preset' => '24h'])) ?>">
+                                    <?= $e($row['username']) ?>
+                                </a>
+                            </td>
                             <td class="num"><?= $e($num((int) $row['failures'])) ?></td>
                             <td class="num"><?= $e($row['sources']) ?></td>
                             <td class="nowrap muted"><?= $e($row['last_seen']) ?></td>
@@ -248,8 +252,10 @@ $badge = static function (?string $result) use ($e): string {
                 </thead>
                 <tbody>
                 <?php foreach ($recent as $row): ?>
-                    <tr>
-                        <td class="nowrap mono"><?= $e($row['ts_label']) ?></td>
+                    <?php $href = '/event?ts=' . rawurlencode((string) ($row['ts_iso'] ?? '')) . '&id=' . (int) $row['id']; ?>
+                    <tr onclick="if(!window.getSelection().toString()){location.href=this.dataset.href}"
+                        data-href="<?= $e($href) ?>" style="cursor:pointer">
+                        <td class="nowrap mono"><a class="rowlink" href="<?= $e($href) ?>"><?= $e($row['ts_label']) ?></a></td>
                         <td><span class="badge badge--source"><?= $e($labels[$row['source_type']] ?? $row['source_type']) ?></span></td>
                         <td class="mono"><?= $e($row['source_host']) ?></td>
                         <td class="mono"><?= $e($row['event_type']) ?></td>

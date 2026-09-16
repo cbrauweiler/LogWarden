@@ -6,12 +6,30 @@ namespace LogWarden\Web;
 
 final class Response
 {
+    /** @var (callable(): void)|null */
+    private $writer = null;
+
     /** @param array<string, string> $headers */
     public function __construct(
         public readonly string $body,
         public readonly int $status = 200,
         public readonly array $headers = [],
     ) {
+    }
+
+    /**
+     * A response written incrementally rather than built as a string. Used by
+     * the CSV export so a large download never has to exist in memory at once.
+     *
+     * @param callable(): void      $writer
+     * @param array<string, string> $headers
+     */
+    public static function streamed(callable $writer, array $headers = []): self
+    {
+        $response = new self('', 200, $headers);
+        $response->writer = $writer;
+
+        return $response;
     }
 
     public static function html(string $body, int $status = 200): self
@@ -52,8 +70,16 @@ final class Response
             header("{$name}: {$value}");
         }
 
-        if (!$bodyless) {
-            echo $this->body;
+        if ($bodyless) {
+            return;
         }
+
+        if ($this->writer !== null) {
+            ($this->writer)();
+
+            return;
+        }
+
+        echo $this->body;
     }
 }

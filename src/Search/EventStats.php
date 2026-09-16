@@ -123,7 +123,8 @@ final class EventStats
         return $this->db->fetchAll(
             "SELECT ts, id, source_type::text AS source_type, source_host, event_type,
                     username, host(src_ip) AS src_ip, result::text AS result,
-                    to_char(ts, 'DD.MM. HH24:MI:SS') AS ts_label
+                    to_char(ts, 'DD.MM. HH24:MI:SS') AS ts_label,
+                    to_char(ts, 'YYYY-MM-DD\"T\"HH24:MI:SS.USOF') AS ts_iso
                FROM events
               WHERE ts >= now() - interval '7 days'
               ORDER BY ts DESC, id DESC

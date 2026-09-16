@@ -26,7 +26,8 @@ if (isset($options['help'])) {
     exit(0);
 }
 
-$dryRun = isset($options['dry-run']);
+$dryRun   = isset($options['dry-run']);
+$failures = 0;
 
 try {
     $config = Config::load(is_string($options['config'] ?? null) ? $options['config'] : null);
@@ -47,9 +48,14 @@ try {
             continue;
         }
 
-        $result = $db->fetchValue('SELECT lw_create_event_partition(?::date)', [$day]);
-        if (!str_contains((string) $result, '(exists)')) {
-            $logger->info('Partition ensured', ['result' => $result]);
+        try {
+            $result = $db->fetchValue('SELECT lw_create_event_partition(?::date)', [$day]);
+            if (!str_contains((string) $result, '(exists)')) {
+                $logger->info('Partition ensured', ['result' => $result]);
+            }
+        } catch (Throwable $e) {
+            $failures++;
+            $logger->error('Partition creation failed', ['day' => $day, 'error' => $e->getMessage()]);
         }
     }
 
@@ -91,9 +97,17 @@ try {
                 continue;
             }
 
-            $logger->info('Dropping expired partition', [
-                'result' => $db->fetchValue('SELECT lw_drop_event_partition(?::date)', [$day->format('Y-m-d')]),
-            ]);
+            try {
+                $logger->info('Dropping expired partition', [
+                    'result' => $db->fetchValue('SELECT lw_drop_event_partition(?::date)', [$day->format('Y-m-d')]),
+                ]);
+            } catch (Throwable $e) {
+                $failures++;
+                $logger->error('Partition drop failed', [
+                    'partition' => $partition['relname'],
+                    'error'     => $e->getMessage(),
+                ]);
+            }
         }
 
         // Per-source-type expiry inside partitions that are still alive.
@@ -155,17 +169,28 @@ try {
             continue;
         }
 
-        if ($wants) {
-            // CONCURRENTLY keeps ingestion writing while the index builds.
-            $db->pdo()->exec(sprintf(
-                'CREATE INDEX CONCURRENTLY IF NOT EXISTS %s ON %s USING gin (search_tsv)',
-                $name . '_tsv_idx',
-                $name,
-            ));
-            $logger->info('Full-text index created', ['partition' => $name]);
-        } else {
-            $db->pdo()->exec(sprintf('DROP INDEX CONCURRENTLY IF EXISTS %s', $name . '_tsv_idx'));
-            $logger->info('Full-text index dropped', ['partition' => $name]);
+        // One partition failing must not stop maintenance for the rest: a
+        // permission problem on a single table would otherwise also block
+        // retention and the creation of tomorrow's partition.
+        try {
+            if ($wants) {
+                // CONCURRENTLY keeps ingestion writing while the index builds.
+                $db->pdo()->exec(sprintf(
+                    'CREATE INDEX CONCURRENTLY IF NOT EXISTS %s ON %s USING gin (search_tsv)',
+                    $name . '_tsv_idx',
+                    $name,
+                ));
+                $logger->info('Full-text index created', ['partition' => $name]);
+            } else {
+                $db->pdo()->exec(sprintf('DROP INDEX CONCURRENTLY IF EXISTS %s', $name . '_tsv_idx'));
+                $logger->info('Full-text index dropped', ['partition' => $name]);
+            }
+        } catch (Throwable $e) {
+            $failures++;
+            $logger->error('Full-text index maintenance failed', [
+                'partition' => $name,
+                'error'     => $e->getMessage(),
+            ]);
         }
     }
 
@@ -177,7 +202,13 @@ try {
         }
     }
 
-    exit(0);
+    if ($failures > 0) {
+        $logger->warning('Maintenance finished with errors', ['failures' => $failures]);
+    }
+
+    // Non-zero so a partially failed run shows up red in systemctl rather than
+    // only in the log.
+    exit($failures > 0 ? 1 : 0);
 } catch (Throwable $e) {
     fwrite(STDERR, 'logwarden-maintenance: ' . $e->getMessage() . "\n");
     exit(1);

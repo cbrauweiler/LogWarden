@@ -45,6 +45,16 @@ bestehenden Alert wachsen, statt die Liste mit fast identischen Kopien zu
 füllen; `cooldown_s` steuert nur die Wiederbenachrichtigung. Geschlossen wird
 nie automatisch. Details in [docs/rules.md](docs/rules.md).
 
+### Suche
+
+Jede Abfrage ist zeitlich begrenzt, damit PostgreSQL Partitionen ausschließen
+kann, und geblättert wird per Keyset statt per OFFSET: Seite 144 ist so schnell
+wie Seite 1. Trefferzahl und Verteilung sind gedeckelt, weil ein exaktes
+Aggregat über alle Treffer linear im Volumen wächst.
+
+Alle Filter stehen im Query-String — eine Suche ist ein Link, den man in ein
+Ticket einfügen kann. Details in [docs/search.md](docs/search.md).
+
 ### Benachrichtigung
 
 Microsoft Teams über Incoming Webhooks, als Adaptive Card. Ein Alert erreicht
@@ -218,7 +228,7 @@ LW_TEST_DSN='host=/var/run/postgresql;dbname=logwarden_test;user=logwarden;passw
 | Dashboard | fertig |
 | Rule-Engine und die drei Startregeln | fertig |
 | Alert-Übersicht und Detailansicht | fertig |
-| Such- und Filteransicht, Event-Detailansicht | offen |
+| Such- und Filteransicht, Event-Detailansicht ([Doku](docs/search.md)) | fertig |
 | Teams-Benachrichtigung ([Doku](docs/notifications.md)) | fertig |
 | WinRM-Pull für AD | offen |
 | DHCP-CSV-Import | offen |

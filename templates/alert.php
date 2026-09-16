@@ -233,8 +233,10 @@ $badge = static function (?string $result) : string {
                 </thead>
                 <tbody>
                 <?php foreach ($events as $event): ?>
-                    <tr>
-                        <td class="nowrap mono"><?= $e($event['ts_label']) ?></td>
+                    <?php $href = '/event?ts=' . rawurlencode((string) ($event['ts_iso'] ?? '')) . '&id=' . (int) $event['id']; ?>
+                    <tr onclick="if(!window.getSelection().toString()){location.href=this.dataset.href}"
+                        data-href="<?= $e($href) ?>" style="cursor:pointer">
+                        <td class="nowrap mono"><a class="rowlink" href="<?= $e($href) ?>"><?= $e($event['ts_label']) ?></a></td>
                         <td><span class="badge badge--source"><?= $e($event['source_type']) ?></span></td>
                         <td class="mono"><?= $e($event['source_host']) ?></td>
                         <td class="mono"><?= $e($event['event_type']) ?></td>

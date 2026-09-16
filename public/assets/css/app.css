@@ -601,6 +601,93 @@ code, kbd, pre, .mono { font-family: var(--font-mono); font-size: 0.86em; }
     background: var(--surface-raised); color: var(--ink-2);
 }
 
+/* --- Search -------------------------------------------------------------- */
+
+.searchbar { padding: var(--card-pad); border-bottom: 1px solid var(--line); }
+
+.searchbar__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 0.75rem 1rem;
+    align-items: start;
+}
+/* Below two columns the span-2 on the free-text field would overflow. */
+@media (max-width: 420px) { .searchbar__grid > .field { grid-column: span 1 !important; } }
+.searchbar__grid .field { margin-bottom: 0; }
+
+.searchbar__row { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; margin-top: 0.9rem; }
+
+/* Source checkboxes read as a row of toggles rather than a form. */
+.sourcepicker { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.sourcepicker label {
+    display: inline-flex; align-items: center; gap: 0.35rem;
+    padding: 0.28rem 0.6rem;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-sm);
+    font-size: 0.82rem;
+    cursor: pointer;
+    user-select: none;
+}
+.sourcepicker label:hover { background: var(--surface-raised); }
+.sourcepicker input:checked + span { font-weight: 600; }
+.sourcepicker label:has(input:checked) { border-color: var(--brand); background: var(--brand-subtle); }
+.sourcepicker .dot { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+
+/* Active filters as removable chips: what is narrowing the result has to be
+   visible, and removing one should not mean editing a URL. */
+.chipbar { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; padding: 0.75rem var(--card-pad); border-bottom: 1px solid var(--line); }
+.filterchip {
+    display: inline-flex; align-items: center; gap: 0.35rem;
+    padding: 0.2rem 0.3rem 0.2rem 0.55rem;
+    border-radius: var(--radius-sm);
+    background: var(--brand-subtle);
+    color: var(--ink-1);
+    font-size: 0.8rem;
+}
+.filterchip__label { color: var(--ink-3); }
+.filterchip__value { font-family: var(--font-mono); font-size: 0.76rem; }
+.filterchip a {
+    display: inline-grid; place-items: center;
+    width: 17px; height: 17px; border-radius: 4px;
+    color: var(--ink-2); text-decoration: none; font-size: 0.9rem; line-height: 1;
+}
+.filterchip a:hover { background: var(--surface-card); color: var(--status-critical); text-decoration: none; }
+
+.resultbar {
+    display: flex; flex-wrap: wrap; gap: 0.6rem 1.25rem; align-items: center;
+    padding: 0.7rem var(--card-pad);
+    border-bottom: 1px solid var(--line);
+    font-size: 0.83rem; color: var(--ink-2);
+}
+.resultbar strong { color: var(--ink-1); font-variant-numeric: tabular-nums; }
+
+.facets { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; }
+.facet { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; }
+.facet__count { font-variant-numeric: tabular-nums; font-weight: 600; }
+
+/* Result rows link to the detail view; the whole row is the target. */
+.table--rows tbody tr { cursor: pointer; }
+.table--rows tbody tr:focus-within { background: var(--surface-raised); outline: 2px solid var(--brand); outline-offset: -2px; }
+.table td a.rowlink { color: inherit; text-decoration: none; display: block; }
+.table td a.rowlink:hover { text-decoration: none; }
+
+.pager { display: flex; gap: 0.6rem; align-items: center; padding: var(--card-pad); border-top: 1px solid var(--line); }
+
+.snippet {
+    font-family: var(--font-mono); font-size: 0.75rem; color: var(--ink-3);
+    display: block; max-width: 52ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* Event detail */
+.eventgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.25rem; }
+.jsontable { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.jsontable th {
+    text-align: left; font-weight: 500; color: var(--ink-3);
+    padding: 0.3rem 0.8rem 0.3rem 0; white-space: nowrap; vertical-align: top;
+    font-family: var(--font-mono); font-size: 0.78rem;
+}
+.jsontable td { padding: 0.3rem 0; font-family: var(--font-mono); font-size: 0.78rem; word-break: break-word; }
+
 /* --- Misc ---------------------------------------------------------------- */
 
 .raw {

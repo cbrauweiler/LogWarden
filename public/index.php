@@ -14,6 +14,7 @@ use LogWarden\Alerting\AlertQuery;
 use LogWarden\Alerting\AlertRepository;
 use LogWarden\Notify\ChannelFactory;
 use LogWarden\Notify\Dispatcher;
+use LogWarden\Search\EventQuery;
 use LogWarden\Search\EventStats;
 use LogWarden\Security\SecretBox;
 use LogWarden\Web\Branding;
@@ -22,6 +23,7 @@ use LogWarden\Web\Controller\AssetController;
 use LogWarden\Web\Controller\BrandingController;
 use LogWarden\Web\Controller\DashboardController;
 use LogWarden\Web\Controller\NotificationController;
+use LogWarden\Web\Controller\SearchController;
 use LogWarden\Web\Response;
 use LogWarden\Web\Router;
 use LogWarden\Web\View;
@@ -82,6 +84,7 @@ $alertQuery = new AlertQuery($db);
 
 $dashboard = new DashboardController(new EventStats($db), $alertQuery, $view);
 $alertsC   = new AlertController($alertQuery, new AlertRepository($db), $view, $actor);
+$searchC   = new SearchController(new EventQuery($db), $db, $view);
 $brandingC = new BrandingController($branding, $view, $actor);
 $assets    = new AssetController($branding);
 
@@ -129,6 +132,9 @@ $router->get('/settings/branding',  fn (): Response => $brandingC->show(
     isset($_GET['saved']) ? ['Corporate Identity gespeichert.'] : [],
 ));
 $router->post('/settings/branding', fn (): Response => $brandingC->save());
+$router->get('/search',             fn (): Response => $searchC->search());
+$router->get('/search/export.csv',  fn (): Response => $searchC->export());
+$router->get('/event',              fn (): Response => $searchC->event());
 $router->get('/alerts',             fn (): Response => $alertsC->index());
 $router->post('/alerts/ack',        fn (): Response => $alertsC->acknowledge());
 $router->get('/alert',              fn (): Response => $alertsC->show());

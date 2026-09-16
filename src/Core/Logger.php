@@ -20,6 +20,9 @@ final class Logger
     /** @var resource|null */
     private $handle = null;
 
+    /** @var resource|null */
+    private $stderrHandle = null;
+
     public function __construct(
         private readonly ?string $path = null,
         string $level = 'info',
@@ -89,12 +92,23 @@ final class Logger
         );
 
         if ($this->stderr) {
-            fwrite(STDERR, $line);
+            // STDERR is only defined under the CLI SAPI. Under php-fpm or the
+            // built-in server the constant does not exist, and referencing it
+            // made the logger fatal exactly when it was asked to report an
+            // error — so the error path took the whole request down with it.
+            $this->stderrHandle ??= defined('STDERR')
+                ? STDERR
+                : (@fopen('php://stderr', 'wb') ?: null);
+
+            if (is_resource($this->stderrHandle)) {
+                fwrite($this->stderrHandle, $line);
+            }
         }
 
         if ($this->path !== null) {
-            $this->handle ??= @fopen($this->path, 'ab');
-            if ($this->handle !== false && $this->handle !== null) {
+            $this->handle ??= @fopen($this->path, 'ab') ?: null;
+
+            if (is_resource($this->handle)) {
                 fwrite($this->handle, $line);
             }
         }
