@@ -4,7 +4,8 @@ Selbstgehostetes, SIEM-ähnliches Werkzeug zur Sammlung, Normalisierung, Suche
 und Alarmierung von Security-Logs aus einer gemischten Windows-/Fortinet-
 Infrastruktur. Kein Agent auf den Zielsystemen.
 
-**Stand:** Fundament und FortiGate-Syslog-Ingestion sind fertig und getestet.
+**Stand:** Fundament, FortiGate-Syslog-Ingestion, Suche, Rule-Engine,
+Teams-Benachrichtigung und die Anmeldung sind fertig und getestet.
 Siehe [Roadmap](#roadmap).
 
 ---
@@ -83,6 +84,24 @@ berechnet LogWarden nach WCAG die Schriftfarbe für Buttons und dunkelt die Farb
 für Fließtext ab, bis sie 4,5:1 erreicht. Die Einstellungsseite zeigt die
 Kontrastwerte an.
 
+### Anmeldung und Rollen
+
+Zwei Wege hinein: **LDAP/AD-Bind** gegen einen Domain Controller und, davon
+unabhängig, **lokale Konten** in der Datenbank (Argon2id). Die lokalen Konten
+sind der Rückweg, wenn das Verzeichnis nicht erreichbar ist — LogWarden
+unterscheidet eine falsche Anmeldung von einer Verzeichnisstörung und zählt
+letztere nicht auf die Kontosperre.
+
+Berechtigungen kommen nie aus dem Verzeichnis, sondern aus einer Zuordnung in
+*Verwaltung → Benutzer*: eine AD-Gruppe **oder** ein einzelnes Konto wird einer
+der drei internen Stufen zugewiesen (Administrator, Analyst, Nur lesend). Ohne
+Zuordnung kommt niemand hinein — `web.default_role` ist ab Werk leer.
+
+Gebunden wird als der anmeldende Benutzer, nie mit einem Dienstkonto, und
+niemals mit leerem Passwort: ein Bind mit DN und leerem Passwort ist laut
+RFC 4513 §5.1.2 ein *unauthenticated bind*, den manche Verzeichnisse als Erfolg
+quittieren. Details in [docs/auth.md](docs/auth.md).
+
 ---
 
 ## Installation
@@ -90,8 +109,9 @@ Kontrastwerte an.
 ```bash
 # 1. Abhängigkeiten (Debian/Ubuntu)
 apt install php8.4-cli php8.4-fpm php8.4-pgsql php8.4-curl php8.4-mbstring \
-            php8.4-xml postgresql-16 nginx
-# php8.4-ldap wird zusätzlich gebraucht, sobald die Anmeldung aktiv ist
+            php8.4-xml php8.4-ldap postgresql-16 nginx
+# php8.4-ldap wird für die AD-Anmeldung gebraucht; ohne die Erweiterung
+# funktionieren nur lokale Konten.
 
 # 2. Datenbank
 sudo -u postgres createuser --pwprompt logwarden
@@ -108,7 +128,10 @@ bin/logwarden-keygen          # legt config/secret.key mit Modus 0600 an
 bin/logwarden-migrate
 bin/logwarden-maintenance
 
-# 6. Dienste
+# 6. Erstes Administratorkonto (fragt das Passwort ohne Echo ab)
+bin/logwarden-user --create=admin --role=admin
+
+# 7. Dienste
 cp deploy/systemd/* /etc/systemd/system/
 systemctl enable --now logwarden-syslogd logwarden-rules.timer \
                        logwarden-notify.timer logwarden-maintenance.timer \
@@ -124,9 +147,10 @@ PSR-4-Autoloader, sodass ein einfaches Kopieren des Verzeichnisses genügt.
 bin/logwarden-serve 8080      # bindet ausschließlich an 127.0.0.1
 ```
 
-Die Oberfläche startet nur mit `web.auth_mode = 'none'`, solange der
-LDAP-Login nicht gebaut ist — sie verweigert den Dienst sonst, damit niemand
-versehentlich ein unauthentifiziertes SIEM ins Netz stellt.
+Jede Seite außer `/login` verlangt eine Anmeldung; es gibt keinen
+unauthentifizierten Modus. Für den ersten Zugang dient das in Schritt 6
+angelegte lokale Konto — die AD-Anbindung lässt sich danach in Ruhe unter
+*Verwaltung → Benutzer* einrichten.
 
 ---
 
@@ -175,7 +199,7 @@ config/       Konfiguration und Master-Key (gitignored)
 db/           Migrationen und Seed-Daten
 src/
   Core/       Config, Db, Logger
-  Security/   SecretBox (libsodium)
+  Security/   Anmeldung, Rollen, Sessions, SecretBox (libsodium)
   Event/      Event-DTO, Batch-Writer, Normalizer-Contract
   Ingest/     Syslog/, Fortigate/, Winrm/, Dhcp/
   Rules/      Regel-Interface, Registry, Engine und eingebaute Regeln
@@ -200,6 +224,17 @@ bin/logwarden-notify --list-channels   # Status aller Kanäle
 bin/logwarden-notify --dry-run
 ```
 
+## Benutzer und Zuordnungen
+
+```bash
+bin/logwarden-user --create=admin --role=admin   # lokales Konto anlegen
+bin/logwarden-user --list                        # Konten mit Rolle und Status
+bin/logwarden-user --passwd --user=admin         # Passwort setzen
+bin/logwarden-user --unlock --user=admin         # Kontosperre aufheben
+bin/logwarden-user --map-group='SOC-Analysten' --role=analyst
+bin/logwarden-user --map-user='pweber' --role=readonly
+```
+
 ## Regeln prüfen
 
 ```bash
@@ -213,9 +248,13 @@ bin/logwarden-rules --rule=failed_login_burst
 ```bash
 php tests/run.php
 
-# Datenbanktests (Reconnect-Verhalten) gegen eine Wegwerf-Datenbank
+# Datenbanktests (Reconnect, Suche, Anmeldung) gegen eine Wegwerf-Datenbank
 LW_TEST_DSN='host=/var/run/postgresql;dbname=logwarden_test;user=logwarden;password=…' \
   php tests/run.php
+
+# Zusätzlich gegen ein echtes Verzeichnis (sonst werden die LDAP-Tests
+# übersprungen; erwartet wird die Testdomäne aus tests/Unit/AuthTest.php)
+LW_TEST_LDAP='ldap://127.0.0.1:389' php tests/run.php
 ```
 
 ## Roadmap
@@ -230,10 +269,10 @@ LW_TEST_DSN='host=/var/run/postgresql;dbname=logwarden_test;user=logwarden;passw
 | Alert-Übersicht und Detailansicht | fertig |
 | Such- und Filteransicht, Event-Detailansicht ([Doku](docs/search.md)) | fertig |
 | Teams-Benachrichtigung ([Doku](docs/notifications.md)) | fertig |
+| Anmeldung, Rollen und Benutzerverwaltung ([Doku](docs/auth.md)) | fertig |
 | WinRM-Pull für AD | offen |
 | DHCP-CSV-Import | offen |
 | DNS: Audit-Kanal, danach optional Analytic-Verdichtung ([Strategie](docs/dns.md)) | offen |
-| LDAP-Anmeldung und Rollenmodell | offen |
 
 ### Zwei bekannte Fallstricke
 

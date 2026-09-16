@@ -1,0 +1,316 @@
+#!/usr/bin/env php
+<?php
+/**
+ * Local account management from the command line.
+ *
+ * Its reason to exist is the first one: a fresh installation has no accounts
+ * and no way to sign in to create one. It is also the way back after the last
+ * administrator locks themselves out.
+ *
+ * Usage:
+ *   bin/logwarden-user --create=NAME [--role=admin|analyst|readonly] [--display=NAME] [--email=ADDR]
+ *   bin/logwarden-user --passwd=NAME
+ *   bin/logwarden-user --role=ROLE --user=NAME
+ *   bin/logwarden-user --unlock=NAME
+ *   bin/logwarden-user --enable=NAME | --disable=NAME
+ *   bin/logwarden-user --list
+ *   bin/logwarden-user --map-group=GROUP --role=ROLE [--priority=N]
+ *   bin/logwarden-user --map-user=NAME --role=ROLE [--priority=N]
+ *
+ * Passwords are read from the terminal, never from the command line: arguments
+ * end up in the shell history and in `ps`.
+ */
+
+declare(strict_types=1);
+
+require dirname(__DIR__) . '/src/bootstrap.php';
+
+use LogWarden\Core\Config;
+use LogWarden\Core\Db;
+use LogWarden\Security\PasswordPolicy;
+use LogWarden\Security\Role;
+
+$options = getopt('', [
+    'config::', 'create::', 'passwd::', 'role::', 'user::', 'display::', 'email::',
+    'unlock::', 'enable::', 'disable::', 'list', 'map-group::', 'map-user::',
+    'priority::', 'help',
+]);
+
+if ($options === [] || isset($options['help'])) {
+    fwrite(STDOUT, <<<TXT
+    LogWarden — lokale Konten und Berechtigungszuordnung
+
+      --create=NAME       lokales Konto anlegen (Passwort wird abgefragt)
+      --passwd=NAME       Passwort eines lokalen Kontos neu setzen
+      --role=ROLE         admin | analyst | readonly
+      --user=NAME         Zielkonto für --role
+      --unlock=NAME       Sperre und Fehlversuche zurücksetzen
+      --enable=NAME       Konto aktivieren
+      --disable=NAME      Konto deaktivieren
+      --list              Konten und Zuordnungen anzeigen
+      --map-group=GRUPPE  AD-Gruppe einer Berechtigungsstufe zuordnen
+      --map-user=NAME     einzelnes AD-Konto einer Berechtigungsstufe zuordnen
+      --priority=N        Priorität der Zuordnung (Vorgabe 100)
+      --config=PFAD       alternative Konfigurationsdatei
+
+    Beispiel für eine frische Installation:
+      bin/logwarden-user --create=admin --role=admin --display="IT-Security"
+
+    TXT);
+    exit(0);
+}
+
+/** Reads a secret without echoing it. */
+function promptSecret(string $label): string
+{
+    fwrite(STDOUT, $label);
+
+    $wasTty = stream_isatty(STDIN);
+
+    if ($wasTty) {
+        shell_exec('stty -echo 2>/dev/null');
+    }
+
+    $value = rtrim((string) fgets(STDIN), "\r\n");
+
+    if ($wasTty) {
+        shell_exec('stty echo 2>/dev/null');
+        fwrite(STDOUT, "\n");
+    }
+
+    return $value;
+}
+
+function requireRole(array $options): Role
+{
+    $role = Role::tryFromName(is_string($options['role'] ?? null) ? $options['role'] : '');
+
+    if ($role === null) {
+        fwrite(STDERR, "--role muss admin, analyst oder readonly sein.\n");
+        exit(1);
+    }
+
+    return $role;
+}
+
+try {
+    $config = Config::load(is_string($options['config'] ?? null) ? $options['config'] : null);
+    $db     = Db::fromConfig($config);
+
+    // --- list ------------------------------------------------------------
+    if (isset($options['list'])) {
+        $users = $db->fetchAll(
+            "SELECT username, display_name, auth_provider, role::text AS role, role_source, enabled,
+                    locked_until > now() AS locked,
+                    to_char(last_login_at, 'DD.MM.YYYY HH24:MI') AS last_login
+               FROM users ORDER BY auth_provider, username"
+        );
+
+        fwrite(STDOUT, "Konten:\n");
+        if ($users === []) {
+            fwrite(STDOUT, "  keine — mit --create=NAME das erste anlegen\n");
+        }
+        foreach ($users as $u) {
+            fwrite(STDOUT, sprintf(
+                "  %-22s %-7s %-9s %-8s %s%s\n",
+                $u['username'],
+                $u['auth_provider'],
+                $u['role'],
+                $u['enabled'] ? 'aktiv' : 'inaktiv',
+                $u['locked'] ? '[gesperrt] ' : '',
+                'zuletzt: ' . ($u['last_login'] ?? 'nie'),
+            ));
+        }
+
+        $maps = $db->fetchAll(
+            'SELECT subject_type, subject, role::text AS role, priority, enabled
+               FROM ldap_role_map ORDER BY priority DESC, subject'
+        );
+
+        fwrite(STDOUT, "\nBerechtigungszuordnung:\n");
+        if ($maps === []) {
+            fwrite(STDOUT, "  keine — ohne Eintrag kann sich kein Verzeichniskonto anmelden\n");
+        }
+        foreach ($maps as $m) {
+            fwrite(STDOUT, sprintf(
+                "  %-6s %-46s -> %-9s Prio %-4d %s\n",
+                $m['subject_type'] === 'user' ? 'Konto' : 'Gruppe',
+                $m['subject'],
+                $m['role'],
+                $m['priority'],
+                $m['enabled'] ? '' : '[inaktiv]',
+            ));
+        }
+        exit(0);
+    }
+
+    // --- create ----------------------------------------------------------
+    if (!empty($options['create'])) {
+        $username = mb_strtolower(trim((string) $options['create']));
+
+        if (preg_match('/^[a-z0-9._-]{3,64}$/', $username) !== 1) {
+            fwrite(STDERR, "Benutzername: 3–64 Zeichen aus a–z, 0–9, Punkt, Unterstrich, Bindestrich.\n");
+            exit(1);
+        }
+
+        if ($db->fetchValue('SELECT 1 FROM users WHERE username = ?', [$username]) !== null) {
+            fwrite(STDERR, "Das Konto '{$username}' existiert bereits.\n");
+            exit(1);
+        }
+
+        $role = requireRole($options);
+
+        fwrite(STDOUT, "Vorschlag: " . PasswordPolicy::suggest() . "\n");
+        $password = promptSecret('Passwort: ');
+        $repeat   = promptSecret('Wiederholen: ');
+
+        if ($password !== $repeat) {
+            fwrite(STDERR, "Die Eingaben stimmen nicht überein.\n");
+            exit(1);
+        }
+
+        $violations = PasswordPolicy::check($password, $username);
+        if ($violations !== []) {
+            foreach ($violations as $violation) {
+                fwrite(STDERR, '  - ' . $violation . "\n");
+            }
+            exit(1);
+        }
+
+        $db->execute(
+            "INSERT INTO users (username, display_name, email, auth_provider, password_hash,
+                                role, role_source, enabled, must_change_password, password_changed_at)
+             VALUES (?, ?, ?, 'local', ?, ?::user_role_t, 'manual', true, false, now())",
+            [
+                $username,
+                is_string($options['display'] ?? null) ? $options['display'] : null,
+                is_string($options['email'] ?? null) ? $options['email'] : null,
+                PasswordPolicy::hash($password),
+                $role->value,
+            ],
+        );
+
+        fwrite(STDOUT, "Konto '{$username}' mit Stufe '{$role->value}' angelegt.\n");
+        exit(0);
+    }
+
+    // --- passwd ----------------------------------------------------------
+    if (!empty($options['passwd'])) {
+        $username = mb_strtolower(trim((string) $options['passwd']));
+        $row      = $db->fetchRow('SELECT id, auth_provider FROM users WHERE username = ?', [$username]);
+
+        if ($row === null) {
+            fwrite(STDERR, "Konto '{$username}' nicht gefunden.\n");
+            exit(1);
+        }
+
+        if ($row['auth_provider'] !== 'local') {
+            fwrite(STDERR, "'{$username}' ist ein Verzeichniskonto — das Passwort liegt im Active Directory.\n");
+            exit(1);
+        }
+
+        $password   = promptSecret('Neues Passwort: ');
+        $violations = PasswordPolicy::check($password, $username);
+
+        if ($violations !== []) {
+            foreach ($violations as $violation) {
+                fwrite(STDERR, '  - ' . $violation . "\n");
+            }
+            exit(1);
+        }
+
+        $db->execute(
+            'UPDATE users SET password_hash = ?, password_changed_at = now(),
+                              must_change_password = false, failed_logins = 0, locked_until = NULL
+              WHERE id = ?',
+            [PasswordPolicy::hash($password), (int) $row['id']],
+        );
+
+        $ended = $db->execute('DELETE FROM sessions WHERE user_id = ?', [(int) $row['id']]);
+
+        fwrite(STDOUT, "Passwort gesetzt. {$ended} Sitzung(en) beendet.\n");
+        exit(0);
+    }
+
+    // --- role ------------------------------------------------------------
+    if (!empty($options['user']) && !empty($options['role'])) {
+        $username = mb_strtolower(trim((string) $options['user']));
+        $role     = requireRole($options);
+
+        $changed = $db->execute(
+            "UPDATE users SET role = ?::user_role_t, role_source = 'manual',
+                              role_matched_by = 'Manuell zugewiesen (CLI)'
+              WHERE username = ?",
+            [$role->value, $username],
+        );
+
+        if ($changed === 0) {
+            fwrite(STDERR, "Konto '{$username}' nicht gefunden.\n");
+            exit(1);
+        }
+
+        fwrite(STDOUT, "'{$username}' hat jetzt die Stufe '{$role->value}'.\n");
+        exit(0);
+    }
+
+    // --- unlock / enable / disable ---------------------------------------
+    foreach (['unlock', 'enable', 'disable'] as $verb) {
+        if (empty($options[$verb])) {
+            continue;
+        }
+
+        $username = mb_strtolower(trim((string) $options[$verb]));
+
+        $sql = match ($verb) {
+            'unlock'  => 'UPDATE users SET failed_logins = 0, locked_until = NULL WHERE username = ?',
+            'enable'  => 'UPDATE users SET enabled = true WHERE username = ?',
+            'disable' => 'UPDATE users SET enabled = false WHERE username = ?',
+        };
+
+        if ($db->execute($sql, [$username]) === 0) {
+            fwrite(STDERR, "Konto '{$username}' nicht gefunden.\n");
+            exit(1);
+        }
+
+        if ($verb === 'disable') {
+            $db->execute('DELETE FROM sessions WHERE user_id = (SELECT id FROM users WHERE username = ?)', [$username]);
+        }
+
+        fwrite(STDOUT, "'{$username}': {$verb} ausgeführt.\n");
+        exit(0);
+    }
+
+    // --- mappings --------------------------------------------------------
+    foreach (['map-group' => 'group', 'map-user' => 'user'] as $option => $type) {
+        if (empty($options[$option])) {
+            continue;
+        }
+
+        $subject  = trim((string) $options[$option]);
+        $role     = requireRole($options);
+        $priority = max(0, min(999, (int) ($options['priority'] ?? 100)));
+
+        $db->execute(
+            'INSERT INTO ldap_role_map (subject_type, subject, role, priority, created_by)
+             VALUES (?, ?, ?::user_role_t, ?, ?)
+             ON CONFLICT (subject_type, lower(subject))
+             DO UPDATE SET role = EXCLUDED.role, priority = EXCLUDED.priority, enabled = true',
+            [$type, $subject, $role->value, $priority, 'cli'],
+        );
+
+        fwrite(STDOUT, sprintf(
+            "%s '%s' -> Stufe '%s' (Priorität %d).\n",
+            $type === 'user' ? 'Konto' : 'Gruppe',
+            $subject,
+            $role->value,
+            $priority,
+        ));
+        exit(0);
+    }
+
+    fwrite(STDERR, "Keine passende Aktion. --help zeigt die Möglichkeiten.\n");
+    exit(1);
+} catch (Throwable $e) {
+    fwrite(STDERR, 'logwarden-user: ' . $e->getMessage() . "\n");
+    exit(1);
+}

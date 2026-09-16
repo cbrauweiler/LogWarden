@@ -66,13 +66,21 @@ return [
     ],
 
     'web' => [
-        // 'ldap'  - Active Directory bind (production)
-        // 'local' - only local break-glass accounts
-        // 'none'  - NO AUTHENTICATION. Development only. Never expose the
-        //           listener beyond 127.0.0.1 with this setting.
+        // 'ldap'  - Active Directory, with local accounts as the way back in
+        //           when the domain controller is the thing that broke
+        // 'local' - local accounts only
         'auth_mode'        => 'ldap',
+
+        // Absolute lifetime: a session ends after this however active it is,
+        // so a stolen one cannot be kept alive by using it.
         'session_ttl'      => 8 * 3600,
+        // Idle lifetime, renewed on each request.
         'session_idle_ttl' => 60 * 60,
+
+        // Permission level for an authenticated account that matches no
+        // mapping. Empty means such a login is refused, which is the safe
+        // default: a new AD account should not silently gain access.
+        'default_role'     => '',
         // Sent as Strict-Transport-Security once you terminate TLS.
         'behind_tls'       => true,
 
@@ -81,16 +89,36 @@ return [
         'base_url'         => 'https://logwarden.example.local',
     ],
 
+    // Requires php8.4-ldap. Without the extension the directory login is
+    // unavailable and only local accounts work.
     'ldap' => [
-        'hosts'         => ['ldaps://dc01.example.local', 'ldaps://dc02.example.local'],
-        'port'          => 636,
-        'base_dn'       => 'DC=example,DC=local',
-        'bind_format'   => '%s@example.local',   // %s = sAMAccountName
-        'tls_verify'    => true,
-        'tls_ca_file'   => null,
-        'timeout'       => 5,
-        // Optional service account used to read group memberships when the
-        // user's own bind is not allowed to. Stored in the `secrets` table.
+        // Tried in order; the first that answers is used.
+        'hosts'       => ['ldaps://dc01.example.local', 'ldaps://dc02.example.local'],
+        'base_dn'     => 'DC=example,DC=local',
+
+        // How the login name becomes something the directory binds as.
+        // Active Directory accepts the user principal name, so '%s@example.local'
+        // is usually right. An OpenLDAP directory wants a full DN, e.g.
+        // 'uid=%s,ou=Users,dc=example,dc=local'.
+        'bind_format' => '%s@example.local',
+
+        // Attribute holding the login name. sAMAccountName for AD, uid for
+        // most others.
+        'login_attribute' => 'sAMAccountName',
+
+        'start_tls'   => false,   // set when connecting over ldap:// on port 389
+        'tls_verify'  => true,
+        'tls_ca_file' => null,
+        'timeout'     => 5,
+
+        // Resolve group membership transitively via AD's matching rule, so a
+        // user who is in SOC-Admins through a nested group is recognised.
+        // Costs one extra search per login.
+        'nested_groups' => false,
+
+        // Optional service account, used only by the reachability check on the
+        // user administration page. Stored encrypted in `secrets`.
+        'service_bind_dn'    => null,
         'service_secret_ref' => null,
     ],
 

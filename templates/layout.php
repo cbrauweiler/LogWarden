@@ -5,7 +5,6 @@
  * @var string $active
  * @var array  $branding
  * @var array  $user
- * @var bool   $devMode
  */
 
 use LogWarden\Web\View;
@@ -16,17 +15,21 @@ $theme    = (string) ($branding['default_theme'] ?? 'auto');
 $product  = (string) ($branding['product_name'] ?? 'LogWarden');
 $assets   = $assets ?? [];   // shared globally; defaulted for safety
 
-$nav = [
-    ['id' => 'dashboard', 'href' => '/',                  'label' => 'Dashboard',   'icon' => 'grid'],
-    ['id' => 'search',    'href' => '/search',            'label' => 'Suche',       'icon' => 'search'],
-    ['id' => 'alerts',    'href' => '/alerts',            'label' => 'Alerts',      'icon' => 'bell'],
-];
-$adminNav = [
-    ['id' => 'sources',  'href' => '/settings/sources',  'label' => 'Quellen',            'icon' => 'plug'],
-    ['id' => 'rules',    'href' => '/settings/rules',    'label' => 'Regeln',             'icon' => 'shield'],
-    ['id' => 'notifications', 'href' => '/settings/notifications', 'label' => 'Benachrichtigungen', 'icon' => 'send'],
-    ['id' => 'branding', 'href' => '/settings/branding', 'label' => 'Corporate Identity', 'icon' => 'palette'],
-];
+use LogWarden\Security\Permission;
+
+// Only what this account may actually open. A link to a page that answers 403
+// is worse than no link.
+$nav = array_values(array_filter([
+    ['id' => 'dashboard', 'href' => '/',       'label' => 'Dashboard', 'icon' => 'grid',   'need' => Permission::DASHBOARD_VIEW],
+    ['id' => 'search',    'href' => '/search', 'label' => 'Suche',     'icon' => 'search', 'need' => Permission::SEARCH_VIEW],
+    ['id' => 'alerts',    'href' => '/alerts', 'label' => 'Alerts',    'icon' => 'bell',   'need' => Permission::ALERT_VIEW],
+], static fn (array $item): bool => $user !== null && $user->can($item['need'])));
+
+$adminNav = array_values(array_filter([
+    ['id' => 'notifications', 'href' => '/settings/notifications', 'label' => 'Benachrichtigungen', 'icon' => 'send',    'need' => Permission::NOTIFY_MANAGE],
+    ['id' => 'branding',      'href' => '/settings/branding',      'label' => 'Corporate Identity', 'icon' => 'palette', 'need' => Permission::BRANDING_MANAGE],
+    ['id' => 'users',         'href' => '/settings/users',         'label' => 'Benutzer',           'icon' => 'users',   'need' => Permission::USER_MANAGE],
+], static fn (array $item): bool => $user !== null && $user->can($item['need'])));
 
 $icons = [
     'grid'    => '<path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/>',
@@ -35,6 +38,8 @@ $icons = [
     'plug'    => '<path d="M9 2v6M15 2v6M6 8h12v3a6 6 0 0 1-12 0zM12 17v5"/>',
     'shield'  => '<path d="M12 2 4 6v6c0 5 3.4 8.9 8 10 4.6-1.1 8-5 8-10V6z"/>',
     'send'    => '<path d="m21 3-9.5 9.5M21 3l-6.5 18-4-8-8-4z"/>',
+    'users'   => '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9"/><path d="M16 3.1a4 4 0 0 1 0 7.8"/>',
+    'user'    => '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
     'palette' => '<circle cx="12" cy="12" r="9"/><circle cx="8.5" cy="10" r="1.2"/><circle cx="12" cy="7.5" r="1.2"/><circle cx="15.5" cy="10" r="1.2"/>',
 ];
 
@@ -88,8 +93,12 @@ $renderLink = static function (array $item) use ($active, $e, $icons): string {
             <?php foreach ($adminNav as $item) { echo $renderLink($item); } ?>
         </nav>
 
+        <div class="sidebar__nav" style="padding-top:0">
+            <?= $renderLink(['id' => 'profile', 'href' => '/profile', 'label' => 'Mein Profil', 'icon' => 'user']) ?>
+        </div>
+
         <div class="sidebar__foot">
-            <?= $e($branding['footer_text'] ?? '') ?: 'Angemeldet als ' . $e($user['username'] ?? '–') ?>
+            <?= $e($branding['footer_text'] ?? '') ?>
         </div>
     </aside>
 
@@ -107,25 +116,19 @@ $renderLink = static function (array $item) use ($active, $e, $icons): string {
                         </svg>
                     </button>
                 <?php endif; ?>
-                <span class="topbar__meta"><?= $e($user['username'] ?? '') ?> · <?= $e($user['role'] ?? '') ?></span>
+                <?php if ($user !== null): ?>
+                    <a class="topbar__meta" href="/profile" style="color:inherit; text-decoration:none">
+                        <?= $e($user->name()) ?> · <?= $e($user->role->label()) ?>
+                    </a>
+                    <form method="post" action="/logout" style="display:inline">
+                        <?= \LogWarden\Web\Csrf::field() ?>
+                        <button class="btn btn--ghost" type="submit" title="Abmelden">Abmelden</button>
+                    </form>
+                <?php endif; ?>
             </div>
         </header>
 
         <main class="content stack">
-            <?php if (!empty($devMode)): ?>
-                <div class="notice notice--critical" role="alert">
-                    <svg class="notice__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                         stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
-                        <path d="M12 9v4M12 17h.01M10.3 3.9 2.4 17.5A1.9 1.9 0 0 0 4 20.4h16a1.9 1.9 0 0 0 1.6-2.9L13.7 3.9a1.9 1.9 0 0 0-3.4 0z"/>
-                    </svg>
-                    <div>
-                        <strong>Keine Authentifizierung aktiv</strong> —
-                        <code>web.auth_mode = none</code>. Nur für lokale Tests; der Listener darf in
-                        dieser Konfiguration ausschließlich an 127.0.0.1 gebunden sein.
-                    </div>
-                </div>
-            <?php endif; ?>
-
             <?= $content ?>
         </main>
     </div>

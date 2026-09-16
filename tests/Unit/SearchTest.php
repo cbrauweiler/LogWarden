@@ -417,7 +417,9 @@ test('the logger works outside the CLI, where STDERR does not exist', function (
     // error path took the whole request down with it.
     $file = sys_get_temp_dir() . '/lw-logger-' . bin2hex(random_bytes(4)) . '.log';
 
-    $logger = new \LogWarden\Core\Logger($file, 'info', true, 'sapitest');
+    // stderr off so the assertion output stays readable; the file path is
+    // what this test is about.
+    $logger = new \LogWarden\Core\Logger($file, 'info', false, 'sapitest');
     $logger->error('Fehlerpfad');
 
     assertTrue(is_file($file));

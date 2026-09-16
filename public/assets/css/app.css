@@ -688,6 +688,73 @@ code, kbd, pre, .mono { font-family: var(--font-mono); font-size: 0.86em; }
 }
 .jsontable td { padding: 0.3rem 0; font-family: var(--font-mono); font-size: 0.78rem; word-break: break-word; }
 
+/* --- Login --------------------------------------------------------------- */
+
+.loginpage {
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: 2rem 1rem;
+    background: var(--surface-page);
+}
+
+.loginbox { width: 100%; max-width: 25rem; }
+
+.loginbox__brand {
+    display: flex; align-items: center; gap: 0.7rem;
+    justify-content: center;
+    margin-bottom: 1.5rem;
+}
+.loginbox__brand img { max-height: 44px; max-width: 220px; }
+.loginbox__mark {
+    width: 40px; height: 40px; border-radius: var(--radius-md);
+    background: var(--brand); color: var(--brand-ink);
+    display: grid; place-items: center; font-weight: 700;
+}
+.loginbox__name { font-size: 1.15rem; font-weight: 650; letter-spacing: -0.015em; }
+.loginbox__org  { font-size: 0.8rem; color: var(--ink-3); }
+
+.loginbox .card__body { padding-top: var(--card-pad); }
+.loginbox__hint { text-align: center; color: var(--ink-3); font-size: 0.8rem; margin: 1rem 0 0; }
+.loginbox__foot { text-align: center; color: var(--ink-3); font-size: 0.78rem; margin-top: 1.25rem; }
+
+/* --- Profile ------------------------------------------------------------- */
+
+.identity { display: flex; align-items: center; gap: 1rem; }
+.identity__avatar {
+    width: 56px; height: 56px; flex: none;
+    border-radius: 50%;
+    background: var(--brand); color: var(--brand-ink);
+    display: grid; place-items: center;
+    font-weight: 700; font-size: 1.15rem;
+}
+.identity__name { font-size: 1.1rem; font-weight: 650; }
+.identity__meta { color: var(--ink-3); font-size: 0.84rem; }
+
+/* The permission level is the thing people come to this page to check, so it
+   gets the space rather than being one row in a table. */
+.rolecard {
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--brand);
+    border-radius: var(--radius-md);
+    padding: 0.9rem 1.1rem;
+    background: var(--surface-raised);
+}
+.rolecard__level { font-weight: 650; font-size: 1rem; }
+.rolecard__why { color: var(--ink-2); font-size: 0.83rem; margin-top: 0.3rem; }
+
+.permlist { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 0.3rem 1.25rem; margin: 0; padding: 0; list-style: none; }
+.permlist li { display: flex; align-items: flex-start; gap: 0.45rem; font-size: 0.84rem; padding: 0.15rem 0; }
+.permlist svg { width: 15px; height: 15px; flex: none; margin-top: 2px; }
+.permlist .yes { color: var(--status-good-text); }
+.permlist .no  { color: var(--ink-3); }
+.permlist .no span { color: var(--ink-3); text-decoration: line-through; }
+
+.grouplist { display: flex; flex-direction: column; gap: 0.25rem; }
+.grouplist code { font-size: 0.76rem; word-break: break-all; }
+
+.session--current { background: color-mix(in srgb, var(--status-good) 8%, transparent); }
+
 /* --- Misc ---------------------------------------------------------------- */
 
 .raw {
