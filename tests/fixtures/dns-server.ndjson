@@ -1,0 +1,5 @@
+# Klassischer Kanal "DNS Server": der Dienst, nicht die Daten.
+{"r":881,"t":"2026-09-16T06:00:04.0000000Z","i":2,"p":"Microsoft-Windows-DNS-Server-Service","c":"DC01.corp.local","l":"Informationen","d":{}}
+{"r":882,"t":"2026-09-16T06:02:11.0000000Z","i":4013,"p":"Microsoft-Windows-DNS-Server-Service","c":"DC01.corp.local","l":"Warnung","d":{}}
+{"r":883,"t":"2026-09-16T06:14:55.0000000Z","i":6527,"p":"Microsoft-Windows-DNS-Server-Service","c":"DC01.corp.local","l":"Warnung","d":{"ZoneName":"corp.local","Source":"198.51.100.42"}}
+{"r":884,"t":"2026-09-16T07:02:00.0000000Z","i":4007,"p":"Microsoft-Windows-DNS-Server-Service","c":"DC01.corp.local","l":"Fehler","d":{"ZoneName":"legacy.corp.local"}}

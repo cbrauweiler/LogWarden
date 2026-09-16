@@ -280,7 +280,18 @@ function renderOutput(string $script, string $mode): string
     $max  = (int) ($mMax[1] ?? 5000);
     $ids  = isset($mIds[1]) ? array_map('intval', explode(',', $mIds[1])) : [];
 
-    $fixture = dirname(__DIR__) . '/fixtures/ad-security.ndjson';
+    // One mock, several channels: a DNS source has to be answerable with DNS
+    // records, or the collector's channel handling is never exercised.
+    $channel = $mLog[1] ?? 'Security';
+    $fixture = dirname(__DIR__) . '/fixtures/' . match (true) {
+        stripos($channel, 'DNSServer/Audit') !== false => 'dns-audit.ndjson',
+        strcasecmp(trim($channel), 'DNS Server') === 0 => 'dns-server.ndjson',
+        default                                        => 'ad-security.ndjson',
+    };
+
+    if (!is_file($fixture)) {
+        return '##LW-COUNT:0' . "\n";
+    }
     $records = [];
 
     foreach (file($fixture) ?: [] as $line) {

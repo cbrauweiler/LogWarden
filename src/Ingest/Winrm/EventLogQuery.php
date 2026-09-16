@@ -142,6 +142,60 @@ final class EventLogQuery
     }
 
     /**
+     * A script that reports which event ids a channel actually contains.
+     *
+     * docs/dns.md promised this rather than a guessed list: the DNS audit
+     * range differs between server versions, and a catalogue written from
+     * documentation is a hypothesis until a real channel confirms it. The
+     * output is a count per id with one example line, which is enough to
+     * decide what to collect.
+     */
+    public static function discoveryScript(string $channel, int $sample = 5000): string
+    {
+        $literal = self::psString($channel);
+
+        return <<<PS
+            \$ErrorActionPreference = 'Stop'
+            \$ProgressPreference = 'SilentlyContinue'
+            try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
+
+            \$events = @(Get-WinEvent -LogName {$literal} -MaxEvents {$sample} -ErrorAction SilentlyContinue -ErrorVariable ev)
+
+            if (\$ev -and \$events.Count -eq 0) {
+                \$fq = [string]\$ev[0].FullyQualifiedErrorId
+                if (\$fq -notlike 'NoMatchingEventsFound*') {
+                    Write-Error -Message \$ev[0].Exception.Message -ErrorAction Continue
+                    exit 2
+                }
+            }
+
+            foreach (\$g in (\$events | Group-Object Id | Sort-Object Count -Descending)) {
+                \$first = \$g.Group[0]
+                \$o = [ordered]@{}
+                \$o['i'] = [int]\$g.Name
+                \$o['n'] = \$g.Count
+                \$o['l'] = \$first.LevelDisplayName
+                # Erste Zeile der Meldung: genug, um die ID zu erkennen, ohne
+                # den gesamten Erklärtext über das Netz zu schicken.
+                \$msg = \$first.Message
+                if (\$msg) { \$o['m'] = (\$msg -split "`r?`n")[0] } else { \$o['m'] = '' }
+                \$x = [xml]\$first.ToXml()
+                \$f = @()
+                foreach (\$n in \$x.Event.EventData.Data) { if (\$n.Name) { \$f += \$n.Name } }
+                if (\$x.Event.UserData) {
+                    foreach (\$u in \$x.Event.UserData.ChildNodes) {
+                        foreach (\$c in \$u.ChildNodes) { if (\$c.Name) { \$f += \$c.Name } }
+                    }
+                }
+                \$o['f'] = \$f
+                \$o | ConvertTo-Json -Compress -Depth 3
+            }
+
+            Write-Output "##LW-COUNT:\$(\$events.Count)"
+            PS;
+    }
+
+    /**
      * -EncodedCommand takes base64 of UTF-16LE.
      *
      * It exists to sidestep quoting entirely: the script travels as one opaque

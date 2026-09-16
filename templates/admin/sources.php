@@ -3,6 +3,8 @@
  * @var array $sources
  * @var array $channels
  * @var array $catalogue
+ * @var array $dnsAudit
+ * @var array $dnsServer
  * @var array $defaultIds
  * @var array $runs
  * @var array $plugins
@@ -13,6 +15,7 @@
  */
 
 use LogWarden\Ingest\Windows\AdEventCatalog;
+use LogWarden\Ingest\Windows\DnsEventCatalog;
 use LogWarden\Web\Csrf;
 use LogWarden\Web\View;
 
@@ -461,8 +464,13 @@ $ago = static function (?string $timestamp): string {
                 </p>
             </fieldset>
 
-            <fieldset class="fieldset">
-                <legend class="fieldset__legend">Ereignisse</legend>
+            <?php
+            $isDns = $edit !== null && DnsEventCatalog::isDnsChannel($edit->channel());
+            $isAudit = $edit !== null && DnsEventCatalog::isAuditChannel($edit->channel());
+            ?>
+
+            <fieldset class="fieldset" data-events="windows" <?= $isDns ? 'hidden' : '' ?>>
+                <legend class="fieldset__legend">Ereignisse — Sicherheit und System</legend>
                 <p class="field__hint">
                     Gefiltert wird auf dem Windows-Host, nicht hier — nicht ausgewählte Ereignisse
                     gehen gar nicht erst über das Netz.
@@ -486,6 +494,58 @@ $ago = static function (?string $timestamp): string {
                     </div>
                 <?php endforeach; ?>
             </fieldset>
+
+            <fieldset class="fieldset" data-events="dns" <?= $isDns ? '' : 'hidden' ?>>
+                <legend class="fieldset__legend">Ereignisse — DNS</legend>
+                <p class="field__hint">
+                    <strong>Nichts auswählen heißt: alles sammeln.</strong> Der Audit-Kanal schreibt
+                    an ruhigen Tagen gar nichts, und eine unbekannte Änderung ist genau das, was man
+                    behalten will — anders als beim Sicherheitsprotokoll ist das hier die sinnvolle
+                    Vorgabe.
+                </p>
+                <p class="field__hint">
+                    Die Nummern stammen aus Microsofts Dokumentation und sind hier gegen keinen
+                    echten Server geprüft. Was ein konkreter DNS-Server wirklich schreibt, zeigt
+                    <code>bin/logwarden-winrm --discover=&lt;Quelle&gt;</code>. Nicht aufgeführte
+                    IDs werden trotzdem gesammelt, nur mit ihrer Nummer statt einer Beschriftung.
+                </p>
+
+                <?php foreach (($isAudit || $edit === null ? $dnsAudit : $dnsServer) as $category => $entries): ?>
+                    <h3 class="fieldset__group"><?= $e(DnsEventCatalog::categoryLabel($category)) ?></h3>
+                    <div class="checkgrid">
+                        <?php foreach ($entries as $entry): ?>
+                            <label class="check">
+                                <input type="checkbox" name="event_ids[]" value="<?= $e($entry['id']) ?>"
+                                       <?= in_array($entry['id'], $selected, true) ? 'checked' : '' ?>>
+                                <span>
+                                    <code><?= $e($entry['id']) ?></code> <?= $e($entry['label']) ?>
+                                    <?php if ($entry['notable']): ?>
+                                        <span class="badge badge--info"><span class="badge__dot"></span>sicherheitsrelevant</span>
+                                    <?php endif; ?>
+                                </span>
+                            </label>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endforeach; ?>
+            </fieldset>
+
+            <script>
+                // Progressive enhancement: ohne JavaScript sind beide Listen
+                // sichtbar und das Formular funktioniert unverändert.
+                (function () {
+                    var channel = document.getElementById('channel');
+                    if (!channel) { return; }
+                    var groups = document.querySelectorAll('[data-events]');
+                    function sync() {
+                        var dns = /DNSServer|DNS Server/i.test(channel.value);
+                        groups.forEach(function (g) {
+                            g.hidden = (g.dataset.events === 'dns') !== dns;
+                        });
+                    }
+                    channel.addEventListener('change', sync);
+                    sync();
+                })();
+            </script>
 
             <div class="row" style="justify-content:flex-end; margin-top:1rem">
                 <button class="btn btn--primary" type="submit">

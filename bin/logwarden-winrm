@@ -25,7 +25,7 @@ use LogWarden\Ingest\Winrm\WinrmClient;
 use LogWarden\Ingest\Winrm\WinrmCollector;
 use LogWarden\Security\SecretBox;
 
-$options = getopt('', ['config::', 'source::', 'dry-run', 'list', 'test::', 'reset::', 'force', 'help']);
+$options = getopt('', ['config::', 'source::', 'dry-run', 'list', 'test::', 'reset::', 'discover::', 'force', 'help']);
 
 if (isset($options['help'])) {
     fwrite(STDOUT, <<<TXT
@@ -36,6 +36,7 @@ if (isset($options['help'])) {
       --dry-run       collect and report, write no events and no bookmark
       --list          show all WinRM sources with their health
       --test=NAME     check reachability and credentials, collect nothing
+      --discover=NAME zeigt, welche Event-IDs der Kanal tatsächlich enthält
       --reset=NAME    clear the bookmark so the next run starts over
       --force         ignore poll_interval_s and run now
 
@@ -165,6 +166,84 @@ try {
             $source->channel(),
             trim($probe['stdout']) === '' ? '?' : trim($probe['stdout']),
         ));
+        exit(0);
+    }
+
+    // --- discover ----------------------------------------------------------
+    // The catalogues in src/Ingest/Windows are written from documentation, and
+    // Microsoft has moved parts of the DNS range between server versions. This
+    // asks the channel itself instead of trusting them.
+    if (is_string($options['discover'] ?? null) && $options['discover'] !== '') {
+        $source = $sources->findByName($options['discover']);
+        if ($source === null) {
+            fwrite(STDERR, "Unbekannte Quelle: {$options['discover']}\n");
+            exit(1);
+        }
+
+        $client = $clientFactory($source);
+        $shell  = new LogWarden\Ingest\Winrm\WinrmShell($client, $logger, 120);
+        $result = $shell->run('powershell.exe', LogWarden\Ingest\Winrm\EventLogQuery::powershellArguments(
+            LogWarden\Ingest\Winrm\EventLogQuery::discoveryScript($source->channel(), 5000),
+        ), 300);
+
+        if ($result['exit_code'] !== 0) {
+            fwrite(STDERR, 'Kanal nicht lesbar: ' . (trim($result['stderr']) ?: 'Exit-Code ' . $result['exit_code']) . "\n");
+            exit(1);
+        }
+
+        fwrite(STDOUT, sprintf("Kanal %s auf %s\n\n", $source->channel(), $source->targetHost));
+        fwrite(STDOUT, sprintf("%-8s %-8s %-14s %s\n", 'ID', 'ANZAHL', 'BEKANNT', 'BEISPIEL'));
+
+        $unknown = [];
+        $total   = 0;
+
+        foreach (preg_split('/\R/', $result['stdout']) ?: [] as $line) {
+            $line = trim($line);
+
+            if ($line === '' || str_starts_with($line, '##LW-COUNT:')) {
+                continue;
+            }
+
+            $row = json_decode($line, true);
+            if (!is_array($row) || !isset($row['i'])) {
+                continue;
+            }
+
+            $id    = (int) $row['i'];
+            $known = LogWarden\Ingest\Windows\DnsEventCatalog::isDnsChannel($source->channel())
+                ? LogWarden\Ingest\Windows\DnsEventCatalog::describe($id, $source->channel())
+                : LogWarden\Ingest\Windows\AdEventCatalog::describe($id);
+
+            $total += (int) ($row['n'] ?? 0);
+
+            if ($known === null) {
+                $unknown[] = $id;
+            }
+
+            fwrite(STDOUT, sprintf(
+                "%-8d %-8d %-14s %s\n",
+                $id,
+                (int) ($row['n'] ?? 0),
+                $known === null ? '—' : mb_strimwidth($known['label'], 0, 13),
+                mb_strimwidth(trim((string) ($row['m'] ?? '')), 0, 70, '…'),
+            ));
+
+            if (!empty($row['f']) && is_array($row['f'])) {
+                fwrite(STDOUT, '         Felder: ' . implode(', ', array_slice($row['f'], 0, 12)) . "\n");
+            }
+        }
+
+        fwrite(STDOUT, sprintf("\n%s Events untersucht.\n", number_format($total, 0, ',', '.')));
+
+        if ($unknown !== []) {
+            fwrite(STDOUT, sprintf(
+                "%d ID(s) kennt der Katalog nicht: %s\n"
+                . "Sie werden trotzdem gesammelt, nur mit ihrer Nummer statt einer Beschriftung.\n",
+                count($unknown),
+                implode(', ', $unknown),
+            ));
+        }
+
         exit(0);
     }
 

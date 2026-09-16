@@ -1,0 +1,19 @@
+# Microsoft-Windows-DNSServer/Audit, wie Get-WinEvent es liefert.
+# Die Feldnamen stammen aus Microsofts Dokumentation des Kanals; welche IDs
+# ein konkreter Server wirklich schreibt, zeigt: bin/logwarden-winrm --discover
+# Record per Konsole angelegt
+{"r":41201,"t":"2026-09-16T09:14:22.4410000Z","i":542,"p":"Microsoft-Windows-DNSServer","c":"DC01.corp.local","l":"Informationen","d":{"Zone":"corp.local","NodeName":"ws-asmith.corp.local","RecordType":"A","RecordData":"10.20.30.44","TTL":"3600","User":"CORP\\Administrator","Source":"10.20.30.9"}}
+# Record gelöscht
+{"r":41202,"t":"2026-09-16T09:15:03.1020000Z","i":543,"p":"Microsoft-Windows-DNSServer","c":"DC01.corp.local","l":"Informationen","d":{"Zone":"corp.local","NodeName":"altserver.corp.local","RecordType":"A","RecordData":"10.20.30.80","User":"CORP\\Administrator","Source":"10.20.30.9"}}
+# Zonentransfer-Einstellungen geändert — sicherheitsrelevant
+{"r":41210,"t":"2026-09-16T09:31:47.0000000Z","i":522,"p":"Microsoft-Windows-DNSServer","c":"DC01.corp.local","l":"Informationen","d":{"Zone":"corp.local","SecondaryServers":"198.51.100.42","User":"CORP\\jdoe","Source":"10.20.30.12"}}
+# Weiterleitungen geändert — Umleitung der Auflösung
+{"r":41211,"t":"2026-09-16T09:33:12.5000000Z","i":562,"p":"Microsoft-Windows-DNSServer","c":"DC01.corp.local","l":"Informationen","d":{"Forwarders":"9.9.9.9, 1.1.1.1","User":"CORP\\jdoe","Source":"10.20.30.12"}}
+# Zone gelöscht
+{"r":41220,"t":"2026-09-16T09:40:00.0000000Z","i":514,"p":"Microsoft-Windows-DNSServer","c":"DC01.corp.local","l":"Informationen","d":{"Zone":"test.corp.local","User":"CORP\\Administrator","Source":"10.20.30.9"}}
+# Dynamisches Update durch einen Client — kein angemeldeter Benutzer
+{"r":41230,"t":"2026-09-16T09:41:15.0000000Z","i":544,"p":"Microsoft-Windows-DNSServer","c":"DC01.corp.local","l":"Informationen","d":{"Zone":"corp.local","NodeName":"nb-lwagner.corp.local","RecordType":"A","RecordData":"10.20.30.61","TTL":"1200","Source":"10.20.30.61"}}
+# Routinebetrieb: Zone zurückgeschrieben
+{"r":41240,"t":"2026-09-16T09:45:00.0000000Z","i":520,"p":"Microsoft-Windows-DNSServer","c":"DC01.corp.local","l":"Informationen","d":{"Zone":"corp.local"}}
+# ID, die der Katalog nicht kennt — wird trotzdem gespeichert
+{"r":41250,"t":"2026-09-16T09:50:00.0000000Z","i":599,"p":"Microsoft-Windows-DNSServer","c":"DC01.corp.local","l":"Informationen","d":{"Zone":"corp.local","User":"CORP\\Administrator"}}

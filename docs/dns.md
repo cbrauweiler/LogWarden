@@ -48,19 +48,25 @@ Ereigniskategorien im Kanal:
 | Scavenging-Einstellungen geändert | erklärt verschwundene Records |
 | Forwarder / Root-Hints geändert | Umleitung der Auflösung |
 
-> **Die exakten Event-IDs ziehen wir beim ersten Pull aus dem Kanal**, statt sie
-> hier zu raten — sie unterscheiden sich zwischen Server-Versionen. Auf einem
-> DC listet das folgende Kommando, was tatsächlich vorkommt:
+> **Die exakten Event-IDs ziehen wir aus dem Kanal**, statt sie zu raten — sie
+> unterscheiden sich zwischen Server-Versionen. Das erledigt:
 >
-> ```powershell
-> Get-WinEvent -LogName 'Microsoft-Windows-DNSServer/Audit' -MaxEvents 5000 |
->   Group-Object Id |
->   Select-Object Count, Name, @{n='Beispiel';e={$_.Group[0].Message.Split("`n")[0]}} |
->   Sort-Object Count -Descending
+> ```bash
+> bin/logwarden-winrm --discover='DC01 DNS-Audit'
 > ```
 >
-> Die Liste kommt anschließend in `ingest_sources.config` — sie ist Konfiguration,
-> kein Code.
+> Es fragt den Kanal selbst, zählt pro ID und zeigt je ein Beispiel samt der
+> vorhandenen Feldnamen. Was der Katalog nicht kennt, wird dabei ausdrücklich
+> aufgeführt.
+>
+> **Der Collector braucht die Liste nicht.** Eine unbekannte ID wird gesammelt
+> und mit ihrer Nummer beschriftet, statt verworfen zu werden — genau umgekehrt
+> zum Cisco-Plugin, wo ein unbekannter Meldungstyp eine Flut bedeutet. Hier
+> bedeutet er eine seltene Änderung, und die will man behalten.
+>
+> `src/Ingest/Windows/DnsEventCatalog.php` enthält die Nummern aus Microsofts
+> Dokumentation. Sie sind **gegen keinen echten DNS-Server geprüft** — in dieser
+> Umgebung stand keiner zur Verfügung.
 
 ## 2. Server-Eventlog
 
@@ -154,10 +160,24 @@ ausgeschlossen hast. Die Lücke ist damit bewusst in Kauf genommen, nicht
 ## Vorgeschlagene Reihenfolge
 
 1. **Audit-Kanal** über den WinRM-Collector (identischer Codeweg wie AD) —
-   sofort nützlich, praktisch gratis. Der Collector steht;
+   sofort nützlich, praktisch gratis. **Fertig:**
    `Microsoft-Windows-DNSServer/Audit` ist unter *Verwaltung → Quellen*
-   auswählbar. Offen ist nur die Ereignisliste, siehe den Kasten oben.
+   auswählbar und hat einen eigenen Normalizer, der eine Änderungshistorie
+   schreibt:
+
+   ```
+   [542] Record angelegt ws-asmith.corp.local A 10.20.30.44 in "corp.local" durch Administrator
+   [522] Zonentransfer-Einstellungen geändert für "corp.local" auf 198.51.100.42 durch jdoe
+   [562] Weiterleitungen geändert auf 9.9.9.9, 1.1.1.1 durch jdoe
+   ```
+
+   Bei diesem Kanal heißt **keine Auswahl: alles sammeln**. Er schreibt an
+   ruhigen Tagen nichts, und die Vorgabe „lieber zu viel" ist hier richtig —
+   beim Sicherheitsprotokoll wäre sie es nicht.
 2. **Server-Eventlog** mitnehmen — dieselbe Abfrage, anderer Kanal.
+   **Fertig:** als „DNS — Server-Eventlog" auswählbar. Beachte, dass dieselbe
+   Nummer auf beiden Kanälen Verschiedenes bedeutet; der Katalog führt sie
+   deshalb getrennt.
 3. **FortiGate-DNS-Filter** einschalten, falls vorhanden — kommt über die
    bestehende Syslog-Strecke herein.
 4. **Analytic-Verdichtung** nur, wenn nach Schritt 1–3 noch eine konkrete Frage

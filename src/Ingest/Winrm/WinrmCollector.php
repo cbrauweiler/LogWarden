@@ -10,7 +10,7 @@ use DateTimeZone;
 use LogWarden\Core\Logger;
 use LogWarden\Event\EventWriter;
 use LogWarden\Ingest\IngestSource;
-use LogWarden\Ingest\Windows\AdNormalizer;
+use LogWarden\Ingest\Windows\WindowsNormalizerFactory;
 
 /**
  * Collects one source: one Windows host, one channel, one bounded time window
@@ -247,13 +247,7 @@ final class WinrmCollector
         bool $partial,
         array $bookmark,
     ): array {
-        $normalizer = new AdNormalizer(
-            $source->targetHost ?? $source->name,
-            $source->channel(),
-            $source->sourceType,
-            (bool) $source->setting('include_computer_accounts', false),
-            (bool) $source->setting('include_system_accounts', false),
-        );
+        $normalizer = WindowsNormalizerFactory::for($source);
 
         $before       = $this->writer->stats()['written'];
         $skipped      = 0;

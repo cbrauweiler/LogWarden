@@ -386,7 +386,7 @@ am Ende von [docs/winrm.md](docs/winrm.md).
 | Anmeldung, Rollen und Benutzerverwaltung ([Doku](docs/auth.md)) | fertig |
 | WinRM-Collector für AD-Sicherheitsereignisse ([Doku](docs/winrm.md)) | fertig |
 | Quellen als Plugins, FortiGate und Cisco ASA ([Doku](docs/plugins.md)) | fertig |
-| DNS: Audit-Kanal — Collector steht, eigener Normalizer fehlt ([Strategie](docs/dns.md)) | offen |
+| DNS: Audit- und Server-Kanal mit eigenem Normalizer ([Strategie](docs/dns.md)) | fertig |
 | DHCP-CSV-Import | offen |
 | CI-Pipeline: Lint und Tests bei jedem Push | offen |
 | Verifikation des WinRM-Pfads gegen einen echten Domain Controller | offen |
@@ -396,11 +396,10 @@ am Ende von [docs/winrm.md](docs/winrm.md).
 
 ### Was als Nächstes sinnvoll ist
 
-**DNS-Audit** ist der größte Nutzen pro Aufwand: der Collector steht bereits,
-es fehlt ein eigener Normalizer. Aktuell liefe der Kanal durch den
-AD-Normalizer und ergäbe Zeilen wie „Ereignis 515" statt „Record angelegt".
-Die Event-IDs ziehen wir laut Strategie beim ersten Pull aus dem Kanal,
-statt sie zu raten.
+**DHCP-CSV-Import** ist der letzte fehlende Teil der ursprünglichen
+Quellenliste. Die Audit-Dateien liegen als CSV auf dem Server; gebraucht wird
+ein Importer, der sie über dieselbe Strecke einliest — wahlweise per WinRM
+oder aus einer Freigabe.
 
 **Ein Testlauf gegen einen echten DC** gehört vor die Inbetriebnahme, nicht
 danach — hier gab es kein Windows-System, siehe das Ende von
@@ -410,10 +409,16 @@ danach — hier gab es kein Windows-System, siehe das Ende von
 
 **DNS** zerfällt in zwei sehr unterschiedliche Dinge. Der Audit-Kanal
 (Zonen- und Record-Änderungen) ist standardmäßig aktiv, winzig und im Alltag
-direkt nützlich — er kommt zuerst. Der Analytic-Kanal schreibt eine Zeile pro
-Abfrage, auf einem produktiven DC 2.000–10.000 Events/s, und wird ausschließlich
-verdichtet auf dem DC selbst erfasst, nicht roh. Die Begründung und die
-konkreten Filter stehen in [docs/dns.md](docs/dns.md).
+direkt nützlich — er ist angebunden und schreibt eine Änderungshistorie. Der
+Analytic-Kanal schreibt eine Zeile pro Abfrage, auf einem produktiven DC
+2.000–10.000 Events/s, und wird ausschließlich verdichtet auf dem DC selbst
+erfasst, nicht roh. Die Begründung und die konkreten Filter stehen in
+[docs/dns.md](docs/dns.md).
+
+Die Event-IDs des Audit-Kanals sind aus Microsofts Dokumentation übernommen
+und hier gegen keinen echten DNS-Server geprüft. Der Collector braucht sie
+aber nicht: unbekannte IDs werden gesammelt und mit ihrer Nummer beschriftet,
+und `bin/logwarden-winrm --discover=<Quelle>` fragt den Kanal selbst.
 
 **WinRM in reinem PHP** ist WS-Management-SOAP über HTTPS mit `ext-curl` und
 `CURLAUTH_NTLM`. Der Fallstrick dabei: NTLM authentifiziert die

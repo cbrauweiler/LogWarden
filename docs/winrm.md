@@ -222,6 +222,38 @@ wird gesammelt — genau dafür steht es in der Vorgabeauswahl.
 
 ---
 
+## DNS-Kanäle
+
+Derselbe Collector, andere Kanäle — und ein eigener Normalizer, weil fast
+nichts übertragbar ist: DNS-Audit-Events haben keine Anmeldeart, keinen
+NTSTATUS und keine SID eines Zielkontos. Sie haben eine Zone, einen Knoten,
+einen Record-Typ und einen Wert. Durch den AD-Normalizer gejagt ergaben sie
+„Ereignis 542" ohne Benutzer — technisch gespeichert, praktisch wertlos.
+
+| Kanal | Quelltyp | Inhalt |
+|---|---|---|
+| `Microsoft-Windows-DNSServer/Audit` | `dns` | Zonen- und Record-Änderungen |
+| `DNS Server` | `dns` | Dienstzustand, Ladefehler, verweigerte Transfers |
+
+Zwei Unterschiede zum Sicherheitsprotokoll, beide bewusst:
+
+* **Keine Auswahl heißt alles sammeln.** Der Audit-Kanal schreibt an ruhigen
+  Tagen nichts; die Vorgabe „lieber zu viel" ist hier richtig.
+* **Unbekannte IDs werden gespeichert, nicht verworfen.** Das Gegenteil des
+  Cisco-Plugins — dort bedeutet ein unbekannter Meldungstyp eine Flut, hier
+  eine seltene Änderung.
+
+> Die Nummern in `DnsEventCatalog.php` stammen aus Microsofts Dokumentation und
+> sind **gegen keinen echten DNS-Server geprüft**. Was ein konkreter Server
+> schreibt, zeigt:
+>
+> ```bash
+> bin/logwarden-winrm --discover='DC01 DNS-Audit'
+> ```
+>
+> Es zählt pro ID, zeigt je ein Beispiel und die vorhandenen Feldnamen und
+> markiert, was der Katalog nicht kennt.
+
 ## Was gesammelt wird
 
 Die Auswahl ist eine Volumenentscheidung, keine Übersetzungstabelle. Auf einem
@@ -288,6 +320,7 @@ bin/logwarden-winrm --test='DC01 Sicherheit'  # Erreichbarkeit und Kanalzugriff
 bin/logwarden-winrm --dry-run                 # abrufen, nichts schreiben
 bin/logwarden-winrm --source='DC01 Sicherheit' --force
 bin/logwarden-winrm --reset='DC01 Sicherheit' # Lesezeichen zurücksetzen
+bin/logwarden-winrm --discover='DC01 DNS-Audit'  # welche IDs enthält der Kanal?
 ```
 
 ```

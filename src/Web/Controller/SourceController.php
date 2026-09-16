@@ -11,6 +11,7 @@ use LogWarden\Event\SourceType;
 use LogWarden\Ingest\IngestSource;
 use LogWarden\Ingest\SourceRepository;
 use LogWarden\Ingest\Windows\AdEventCatalog;
+use LogWarden\Ingest\Windows\DnsEventCatalog;
 use LogWarden\Ingest\Winrm\EventLogQuery;
 use LogWarden\Ingest\Winrm\WinrmClient;
 use LogWarden\Ingest\Winrm\WinrmShell;
@@ -54,6 +55,8 @@ final class SourceController
             'sources'    => $this->sources->health(),
             'channels'   => self::CHANNELS,
             'catalogue'  => AdEventCatalog::grouped(),
+            'dnsAudit'   => DnsEventCatalog::grouped('Microsoft-Windows-DNSServer/Audit'),
+            'dnsServer'  => DnsEventCatalog::grouped('DNS Server'),
             'defaultIds' => AdEventCatalog::defaultIds(),
             'runs'       => $this->recentRuns(),
             'plugins'    => $this->plugins(),
@@ -122,9 +125,12 @@ final class SourceController
             static fn (int $id): bool => $id > 0,
         ));
 
-        if ($ids === []) {
-            // An empty selection would collect the entire channel, which on a
-            // domain controller is the one outcome nobody wants by accident.
+        // An empty selection means "collect the whole channel". On Security
+        // that is the one outcome nobody wants by accident — it is the busiest
+        // log on the machine. On the DNS channels it is the sensible default:
+        // the audit channel writes nothing on a quiet day, and an unrecognised
+        // change is exactly what one wants to keep.
+        if ($ids === [] && !DnsEventCatalog::isDnsChannel($channel)) {
             return $this->show([], ['Mindestens ein Ereignis auswählen.']);
         }
 
