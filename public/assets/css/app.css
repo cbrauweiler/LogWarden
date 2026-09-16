@@ -279,7 +279,13 @@ code, kbd, pre, .mono { font-family: var(--font-mono); font-size: 0.86em; }
 }
 
 .card__body { padding: var(--card-pad); padding-top: 0; }
-.card__body--flush { padding: 0; }
+.card__body--flush {
+    padding: 0;
+    /* Wide tables scroll inside their card rather than pushing the page
+       sideways; a horizontally scrolling page makes the whole UI unusable on
+       a phone. */
+    overflow-x: auto;
+}
 .card__hint { color: var(--ink-3); font-size: 0.8rem; margin: 0.15rem 0 0; }
 
 /* --- Stat tiles ---------------------------------------------------------- */
@@ -328,7 +334,7 @@ code, kbd, pre, .mono { font-family: var(--font-mono); font-size: 0.86em; }
 
 /* --- Table --------------------------------------------------------------- */
 
-.table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.table { width: 100%; border-collapse: collapse; font-size: 0.85rem; min-width: 34rem; }
 .table th {
     text-align: left; font-weight: 500; font-size: 0.72rem;
     text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-3);
@@ -499,6 +505,91 @@ code, kbd, pre, .mono { font-family: var(--font-mono); font-size: 0.86em; }
 .logoslot__preview span { color: var(--ink-3); font-size: 0.78rem; }
 .logoslot__name { font-weight: 550; font-size: 0.82rem; }
 .logoslot input[type="file"] { font-size: 0.78rem; width: 100%; }
+
+/* --- Alerts -------------------------------------------------------------- */
+
+/* Severity uses the fixed status ramp, always paired with an icon and a word:
+   the colour is a second signal, never the only one. */
+.sev {
+    display: inline-flex; align-items: center; gap: 0.35rem;
+    font-size: 0.73rem; font-weight: 600;
+    padding: 0.13rem 0.45rem;
+    border-radius: var(--radius-sm);
+    white-space: nowrap;
+}
+.sev svg { width: 12px; height: 12px; flex: none; }
+.sev--critical { color: var(--status-critical); background: color-mix(in srgb, var(--status-critical) 12%, transparent); }
+.sev--serious  { color: var(--status-serious);  background: color-mix(in srgb, var(--status-serious) 16%, transparent); }
+.sev--warning  { color: var(--ink-1);           background: color-mix(in srgb, var(--status-warning) 26%, transparent); }
+.sev--good     { color: var(--status-good-text); background: color-mix(in srgb, var(--status-good) 14%, transparent); }
+
+:root[data-theme="dark"] .sev--serious,
+:root[data-theme="dark"] .sev--warning { color: var(--ink-1); }
+
+.alertlist { display: flex; flex-direction: column; }
+
+.alertrow {
+    display: grid;
+    grid-template-columns: 4px 1fr auto;
+    gap: 0 1rem;
+    border-bottom: 1px solid var(--line);
+    align-items: start;
+}
+.alertlist > .alertrow:last-child { border-bottom: 0; }
+.alertrow:hover { background: var(--surface-raised); }
+
+/* A hairline of severity colour down the left edge: scannable at a glance
+   without turning the whole row into a traffic light. */
+.alertrow__stripe { background: var(--stripe, transparent); }
+.alertrow--critical { --stripe: var(--status-critical); }
+.alertrow--serious  { --stripe: var(--status-serious); }
+.alertrow--warning  { --stripe: var(--status-warning); }
+.alertrow--good     { --stripe: var(--status-good); }
+.alertrow--resolved { --stripe: var(--line-strong); }
+.alertrow--resolved .alertrow__title { color: var(--ink-2); }
+
+.alertrow__main { padding: var(--card-pad) 0; min-width: 0; }
+.alertrow__side { padding: var(--card-pad) var(--card-pad) var(--card-pad) 0; text-align: right; }
+.alertrow__title { font-weight: 600; margin-bottom: 0.2rem; }
+.alertrow__title a { color: inherit; }
+.alertrow__summary { color: var(--ink-2); font-size: 0.85rem; margin-bottom: 0.45rem; }
+.alertrow__meta { display: flex; flex-wrap: wrap; gap: 0.35rem 0.9rem; font-size: 0.78rem; color: var(--ink-3); }
+.alertrow__meta strong { color: var(--ink-2); font-weight: 550; }
+
+.filterbar {
+    display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center;
+    padding: var(--card-pad);
+    border-bottom: 1px solid var(--line);
+}
+.filterbar .input, .filterbar .select { width: auto; min-width: 150px; }
+
+.segmented { display: inline-flex; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); overflow: hidden; }
+.segmented a {
+    padding: 0.36rem 0.75rem; font-size: 0.83rem; color: var(--ink-2);
+    border-right: 1px solid var(--line-strong);
+}
+.segmented a:last-child { border-right: 0; }
+.segmented a:hover { background: var(--surface-raised); text-decoration: none; }
+.segmented a[aria-current="true"] { background: var(--brand); color: var(--brand-ink); font-weight: 550; }
+
+/* Evidence: a plain key/value grid. The rules write it as a snapshot, so it
+   stays readable after the source events have aged out. */
+.kv { display: grid; grid-template-columns: minmax(140px, auto) 1fr; gap: 0.45rem 1.25rem; font-size: 0.85rem; margin: 0; }
+@media (max-width: 560px) { .kv { grid-template-columns: 1fr; gap: 0.1rem 0; } .kv dd { margin-bottom: 0.5rem; } }
+
+/* For a table that sits inside a padded body rather than a flush one. */
+.tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.tablewrap .table { border: 0; }
+.kv dt { color: var(--ink-3); }
+.kv dd { margin: 0; color: var(--ink-1); word-break: break-word; }
+.kv dd.mono { font-family: var(--font-mono); font-size: 0.8rem; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.chip {
+    font-family: var(--font-mono); font-size: 0.75rem;
+    padding: 0.1rem 0.4rem; border-radius: var(--radius-sm);
+    background: var(--surface-raised); color: var(--ink-2);
+}
 
 /* --- Misc ---------------------------------------------------------------- */
 

@@ -47,12 +47,48 @@ $badge = static function (?string $result) use ($e): string {
         <span class="tile__value"><?= $e($num($headline['users'])) ?></span>
         <span class="tile__meta">eindeutige Benutzernamen</span>
     </div>
-    <div class="tile">
-        <span class="tile__label">Quellsysteme</span>
-        <span class="tile__value"><?= $e($num($headline['hosts'])) ?></span>
-        <span class="tile__meta"><?= $e($num($headline['sources'])) ?> Quelltypen aktiv</span>
+    <div class="tile <?= $alertCounters['open'] > 0 ? 'tile--accent' : '' ?>">
+        <span class="tile__label">Offene Alerts</span>
+        <span class="tile__value"><?= $e($num($alertCounters['open'])) ?></span>
+        <span class="tile__meta">
+            <?= $alertCounters['critical'] > 0
+                ? $e($num($alertCounters['critical'])) . ' davon kritisch'
+                : $e($num($headline['hosts'])) . ' Quellsysteme aktiv' ?>
+        </span>
     </div>
 </section>
+
+<?php if ($openAlerts !== []): ?>
+<section class="card">
+    <div class="card__head">
+        <div>
+            <h2>Offene Alerts</h2>
+            <p class="card__hint">Die dringendsten zuerst</p>
+        </div>
+        <a class="btn btn--ghost" href="/alerts">Alle anzeigen</a>
+    </div>
+    <div class="alertlist">
+        <?php foreach ($openAlerts as $alert): ?>
+            <article class="alertrow alertrow--<?= $e(\LogWarden\Alerting\AlertQuery::severityClass((int) $alert['severity'])) ?>">
+                <div class="alertrow__stripe" aria-hidden="true"></div>
+                <div class="alertrow__main">
+                    <div class="alertrow__title">
+                        <a href="/alert?id=<?= $e($alert['id']) ?>"><?= $e($alert['title']) ?></a>
+                    </div>
+                    <p class="alertrow__summary"><?= $e($alert['summary']) ?></p>
+                    <div class="alertrow__meta">
+                        <span><?= $e($alert['rule_name']) ?></span>
+                        <span>Ausgelöst <strong><?= $e($alert['triggered_label']) ?></strong></span>
+                    </div>
+                </div>
+                <div class="alertrow__side">
+                    <?= $view->render('partials/severity', ['severity' => (int) $alert['severity']]) ?>
+                </div>
+            </article>
+        <?php endforeach; ?>
+    </div>
+</section>
+<?php endif; ?>
 
 <section class="card">
     <div class="card__head">

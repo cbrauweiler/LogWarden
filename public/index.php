@@ -10,8 +10,11 @@ require dirname(__DIR__) . '/src/bootstrap.php';
 use LogWarden\Core\Config;
 use LogWarden\Core\Db;
 use LogWarden\Core\Logger;
+use LogWarden\Alerting\AlertQuery;
+use LogWarden\Alerting\AlertRepository;
 use LogWarden\Search\EventStats;
 use LogWarden\Web\Branding;
+use LogWarden\Web\Controller\AlertController;
 use LogWarden\Web\Controller\AssetController;
 use LogWarden\Web\Controller\BrandingController;
 use LogWarden\Web\Controller\DashboardController;
@@ -70,7 +73,10 @@ $view->share('devMode', true);
 $view->share('active', '');
 $view->share('title', 'LogWarden');
 
-$dashboard = new DashboardController(new EventStats($db), $view);
+$alertQuery = new AlertQuery($db);
+
+$dashboard = new DashboardController(new EventStats($db), $alertQuery, $view);
+$alertsC   = new AlertController($alertQuery, new AlertRepository($db), $view, $actor);
 $brandingC = new BrandingController($branding, $view, $actor);
 $assets    = new AssetController($branding);
 
@@ -81,6 +87,9 @@ $router->get('/settings/branding',  fn (): Response => $brandingC->show(
     isset($_GET['saved']) ? ['Corporate Identity gespeichert.'] : [],
 ));
 $router->post('/settings/branding', fn (): Response => $brandingC->save());
+$router->get('/alerts',             fn (): Response => $alertsC->index());
+$router->post('/alerts/ack',        fn (): Response => $alertsC->acknowledge());
+$router->get('/alert',              fn (): Response => $alertsC->show());
 $router->get('/theme.css',   fn (): Response => $assets->themeCss());
 $router->get('/branding/logo',      fn (): Response => $assets->logo());
 

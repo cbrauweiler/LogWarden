@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace LogWarden\Web\Controller;
 
+use LogWarden\Alerting\AlertQuery;
 use LogWarden\Search\EventStats;
 use LogWarden\Web\Response;
 use LogWarden\Web\View;
@@ -21,6 +22,7 @@ final class DashboardController
 
     public function __construct(
         private readonly EventStats $stats,
+        private readonly AlertQuery $alerts,
         private readonly View $view,
     ) {
     }
@@ -38,6 +40,8 @@ final class DashboardController
             'active'       => 'dashboard',
             'hours'        => $hours,
             'headline'     => $this->stats->headline($hours),
+            'alertCounters' => $this->alerts->counters(),
+            'openAlerts'    => $this->alerts->list(['status' => 'new', 'limit' => 5]),
             'volume'       => $volume,
             'labels'       => EventStats::sourceLabels(),
             'colors'       => self::SERIES_COLORS,

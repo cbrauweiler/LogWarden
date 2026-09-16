@@ -33,6 +33,18 @@ eine Datei progressiv verbesserndes JavaScript. Kein npm, kein Bundler, keine
 Web-Fonts von fremden Servern. Diagramme sind handgeschriebenes Inline-SVG und
 funktionieren auch mit deaktiviertem JavaScript.
 
+### Rule-Engine
+
+Regeln sind Plugins: eine Datei in `src/Rules/Builtin/`, eine Zeile in `rules`.
+Die Datenbank speichert einen Schlüssel, keinen Klassennamen — ein
+`new $row['rule_class']` würde aus Schreibzugriff auf eine Konfigurationstabelle
+beliebige Objekterzeugung machen.
+
+Ein offener Alert ist pro Entität eindeutig. Eine anhaltende Lage lässt den
+bestehenden Alert wachsen, statt die Liste mit fast identischen Kopien zu
+füllen; `cooldown_s` steuert nur die Wiederbenachrichtigung. Geschlossen wird
+nie automatisch. Details in [docs/rules.md](docs/rules.md).
+
 ### Corporate Identity
 
 Unter *Verwaltung → Corporate Identity* lassen sich Produktname, Logos,
@@ -77,8 +89,8 @@ bin/logwarden-maintenance
 
 # 6. Dienste
 cp deploy/systemd/* /etc/systemd/system/
-systemctl enable --now logwarden-syslogd logwarden-maintenance.timer \
-                       logwarden-spool-replay.timer
+systemctl enable --now logwarden-syslogd logwarden-rules.timer \
+                       logwarden-maintenance.timer logwarden-spool-replay.timer
 ```
 
 `composer install` ist optional — ohne Composer greift ein eingebauter
@@ -144,7 +156,8 @@ src/
   Security/   SecretBox (libsodium)
   Event/      Event-DTO, Batch-Writer, Normalizer-Contract
   Ingest/     Syslog/, Fortigate/, Winrm/, Dhcp/
-  Rules/      Regel-Interface und eingebaute Regeln
+  Rules/      Regel-Interface, Registry, Engine und eingebaute Regeln
+  Alerting/   Alert-Persistenz und Abfragen
   Notify/     Teams-Webhook
   Search/     Query-Bau und Dashboard-Aggregate
   Web/        Router, Controller, Branding, Farbmathematik, Charts
@@ -152,6 +165,14 @@ public/       Einziger DocumentRoot
 templates/    PHP-Templates
 deploy/       systemd-Units, nginx-Beispiel, Windows-Hinweise
 tests/        Unit-Tests und FortiGate-Fixtures
+```
+
+## Regeln prüfen
+
+```bash
+bin/logwarden-rules --list       # was auf der Platte gefunden wurde
+bin/logwarden-rules --dry-run    # auswerten, ohne zu schreiben
+bin/logwarden-rules --rule=failed_login_burst
 ```
 
 ## Tests
@@ -172,21 +193,23 @@ LW_TEST_DSN='host=/var/run/postgresql;dbname=logwarden_test;user=logwarden;passw
 | FortiGate-Syslog-Ingestion (UDP/TCP/TLS, CEF + key=value) | fertig |
 | Design-System und Corporate Identity | fertig |
 | Dashboard | fertig |
+| Rule-Engine und die drei Startregeln | fertig |
+| Alert-Übersicht und Detailansicht | fertig |
 | Such- und Filteransicht, Event-Detailansicht | offen |
-| Rule-Engine und die drei Startregeln | offen |
 | Teams-Benachrichtigung | offen |
 | WinRM-Pull für AD | offen |
 | DHCP-CSV-Import | offen |
-| DNS-Analytic-Logs | offen |
+| DNS: Audit-Kanal, danach optional Analytic-Verdichtung ([Strategie](docs/dns.md)) | offen |
 | LDAP-Anmeldung und Rollenmodell | offen |
 
 ### Zwei bekannte Fallstricke
 
-**DNS-Analytic-Logs** erzeugen pro DNS-Anfrage eine Zeile — auf einem
-produktiven DC sind das leicht 2.000–10.000 Events/s und damit mehr als alle
-anderen Quellen zusammen. WEF unterstützt Analytic-Kanäle nicht; es geht nur
-über ETW bzw. `Get-WinEvent -Path` auf der `.etl`-Datei. Vor dem Bau des
-Collectors muss eine Filterstrategie feststehen.
+**DNS** zerfällt in zwei sehr unterschiedliche Dinge. Der Audit-Kanal
+(Zonen- und Record-Änderungen) ist standardmäßig aktiv, winzig und im Alltag
+direkt nützlich — er kommt zuerst. Der Analytic-Kanal schreibt eine Zeile pro
+Abfrage, auf einem produktiven DC 2.000–10.000 Events/s, und wird ausschließlich
+verdichtet auf dem DC selbst erfasst, nicht roh. Die Begründung und die
+konkreten Filter stehen in [docs/dns.md](docs/dns.md).
 
 **WinRM in reinem PHP** ist WS-Management-SOAP über HTTPS, machbar mit
 `ext-curl` und `CURLAUTH_NTLM`. Kerberos setzt ein curl mit GSSAPI-Support

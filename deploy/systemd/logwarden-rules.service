@@ -1,0 +1,16 @@
+[Unit]
+Description=LogWarden rule evaluation
+After=postgresql.service
+
+[Service]
+Type=oneshot
+User=logwarden
+Group=logwarden
+WorkingDirectory=/opt/logwarden
+ExecStart=/usr/bin/php /opt/logwarden/bin/logwarden-rules
+EnvironmentFile=-/etc/logwarden/env
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/logwarden/var

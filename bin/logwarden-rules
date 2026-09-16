@@ -1,0 +1,82 @@
+#!/usr/bin/env php
+<?php
+/**
+ * Evaluates the enabled detection rules.
+ *
+ * Usage: bin/logwarden-rules [--config=PATH] [--dry-run] [--rule=KEY] [--list]
+ *
+ * Run it on a timer. Rules evaluate a sliding window, so a missed run costs
+ * timeliness rather than coverage — the next run still sees the events.
+ */
+
+declare(strict_types=1);
+
+require dirname(__DIR__) . '/src/bootstrap.php';
+
+use LogWarden\Alerting\AlertRepository;
+use LogWarden\Core\Config;
+use LogWarden\Core\Db;
+use LogWarden\Core\Logger;
+use LogWarden\Rules\RuleEngine;
+use LogWarden\Rules\RuleRegistry;
+
+$options = getopt('', ['config::', 'dry-run', 'rule::', 'list', 'help']);
+
+if (isset($options['help'])) {
+    fwrite(STDOUT, <<<TXT
+    Usage: logwarden-rules [options]
+
+      --config=PATH   alternative configuration file
+      --dry-run       evaluate and report, write nothing
+      --rule=KEY      evaluate only this rule
+      --list          list the rules available on disk and exit
+
+    TXT);
+    exit(0);
+}
+
+try {
+    $registry = RuleRegistry::default();
+
+    if (isset($options['list'])) {
+        foreach ($registry->describeAll() as $rule) {
+            fwrite(STDOUT, sprintf("%-22s %s\n", $rule['key'], $rule['title']));
+            fwrite(STDOUT, sprintf("%-22s %s\n", '', $rule['description']));
+            fwrite(STDOUT, sprintf(
+                "%-22s Vorgaben: %s\n\n",
+                '',
+                json_encode($rule['defaults'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            ));
+        }
+        exit(0);
+    }
+
+    $config = Config::load(is_string($options['config'] ?? null) ? $options['config'] : null);
+    $logger = Logger::fromConfig($config, 'rules');
+    $db     = Db::fromConfig($config, $logger);
+
+    // Correlation queries scan more than a web request does; the web tier's
+    // statement timeout would abort them on a busy estate.
+    $db->pdo()->exec('SET statement_timeout = 300000');
+
+    $dryRun = isset($options['dry-run']);
+    $only   = is_string($options['rule'] ?? null) ? $options['rule'] : null;
+
+    $engine = new RuleEngine($db, new AlertRepository($db), $logger, $registry);
+    $stats  = $engine->run($dryRun, $only);
+
+    $logger->info($dryRun ? 'Rule run complete (dry run)' : 'Rule run complete', [
+        'evaluated' => $stats['evaluated'],
+        'created'   => $stats['created'],
+        'updated'   => $stats['updated'],
+        'failed'    => $stats['failed'],
+        'notify'    => count($stats['notify']),
+    ]);
+
+    // Non-zero when a rule blew up, so the timer's failure shows in systemctl
+    // rather than only in the log.
+    exit($stats['failed'] > 0 ? 1 : 0);
+} catch (Throwable $e) {
+    fwrite(STDERR, 'logwarden-rules: ' . $e->getMessage() . "\n");
+    exit(1);
+}
